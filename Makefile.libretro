@@ -98,7 +98,7 @@ ifneq (,$(findstring unix,$(platform)))
 
 # (armv7 a7, hard point, neon based) ### 
 # NESC, SNESC, C64 mini 
-else ifeq ($(platform), classic_armv7_a7)
+else ifeq ($(platform),$(filter $(platform),classic_armv7_a7 unix-armv7-hardfloat-neon))
 	TARGET := $(TARGET_NAME)_libretro.so
 	fpic := -fPIC
     SHARED := -shared -Wl,--version-script=$(version_script)  -Wl,--no-undefined -fPIC
@@ -234,6 +234,9 @@ else ifeq ($(platform), tvos-arm64)
    CC = clang -arch arm64 -isysroot $(IOSSDK)
    CXX = clang++ -arch arm64 -isysroot $(IOSSDK)
    HAVE_NETWORK=1
+   CC += -mappletvos-version-min=11.0
+   CXX += -mappletvos-version-min=11.0
+   PLATFORM_DEFINES := -mappletvos-version-min=11.0
 
 # Theos
 else ifeq ($(platform), theos_ios)
@@ -343,7 +346,7 @@ else ifneq (,$(filter $(platform), ngc wii wiiu))
    CXX = $(DEVKITPPC)/bin/powerpc-eabi-g++$(EXE_EXT)
    AR = $(DEVKITPPC)/bin/powerpc-eabi-ar$(EXE_EXT)
    PLATFORM_DEFINES += -DGEKKO -mcpu=750 -meabi -mhard-float
-   PLATFORM_DEFINES += -U__INT32_TYPE__ -U __UINT32_TYPE__ -D__INT32_TYPE__=int
+   PLATFORM_DEFINES += -ffunction-sections -fdata-sections -D__wiiu__ -D__wut__
    STATIC_LINKING = 1
 
    # Nintendo WiiU
