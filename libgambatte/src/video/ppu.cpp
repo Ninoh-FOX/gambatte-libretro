@@ -1591,6 +1591,15 @@ static long cyclesUntilM0Upperbound(PPUPriv const &p) {
 }
 
 static void loadSpriteList(PPUPriv &p, SaveState const &ss) {
+	/* Take the saved values even where the list is not rebuilt below (they
+	 * are not read then): saving right after loading gives the very same
+	 * state, whatever this Game Boy held before, as the Cable Link checks. */
+	for (unsigned i = 0; i < 10; ++i) {
+		p.spriteList[i].attrib = ss.ppu.spAttribList[i] & 0xFF;
+		p.spwordList[i] = (ss.ppu.spByte1List[i] * 0x100 + ss.ppu.spByte0List[i]) & 0xFFFF;
+	}
+	p.currentSprite = ss.ppu.currentSprite;
+
 	if (ss.ppu.videoCycles < 144 * 456UL && ss.ppu.xpos < 168) {
 		unsigned const ly = ss.ppu.videoCycles / 456;
 		unsigned const numSprites = p.spriteMapper.numSprites(ly);
