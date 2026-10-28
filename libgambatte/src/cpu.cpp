@@ -48,8 +48,55 @@ CPU::CPU()
 , h(0x01)
 , l(0x4D)
 , skip_(false)
+#ifdef HAVE_NETWORK
+, blockHook_(0)
+, blockHookPc_(0)
+, blockHookFlag_(0)
+, blockSkip_(false)
+, blockWait_(false)
+#endif
 {
 }
+
+#ifdef HAVE_NETWORK
+/* The CPU is at the block routine (see GB::setBlockHook). Returns what the
+ * exchanger said; on DONE the routine has been done and returned from. */
+int CPU::runBlockHook(unsigned char &a, unsigned short &pc, unsigned long const cc) {
+	enum { MAX_BLOCK = 0x1000 };
+	static unsigned char send[MAX_BLOCK], recv[MAX_BLOCK];
+	unsigned const len = b << 8 | c;
+	unsigned const src = h << 8 | l, dst = d << 8 | e;
+	unsigned i, lo, hi;
+	int r;
+
+	if (!len || len > MAX_BLOCK)
+		return BlockExchanger::RUN;
+	for (i = 0; i < len; i++)
+		send[i] = mem_.read((src + i) & 0xFFFF, cc);
+	r = blockHook_->exchange(send, len, recv);
+	if (r != BlockExchanger::DONE)
+		return r;
+
+	/* As the routine leaves things: the block stored, every counter run
+	 * down (bc = 0, so a = 0 and Z), its flag cleared, and back. */
+	for (i = 0; i < len; i++)
+		mem_.write((dst + i) & 0xFFFF, recv[i], cc);
+	if (blockHookFlag_ >= 0x80 && blockHookFlag_ < 0xFF)
+		mem_.write(0xFF00 | blockHookFlag_, 0, cc);
+	h = ((src + len) >> 8) & 0xFF;
+	l = (src + len) & 0xFF;
+	d = ((dst + len) >> 8) & 0xFF;
+	e = (dst + len) & 0xFF;
+	b = c = 0;
+	a = 0;
+	zf = 0;
+	lo = mem_.read(sp, cc);
+	hi = mem_.read((sp + 1) & 0xFFFF, cc);
+	sp = (sp + 2) & 0xFFFF;
+	pc = (hi << 8 | lo) & 0xFFFF;
+	return r;
+}
+#endif
 
 long CPU::runFor(unsigned long const cycles) {
 	process(cycles);
@@ -507,8 +554,13 @@ void CPU::process(unsigned long const cycles) {
 
 #ifdef HAVE_NETWORK
 		mem_.checkSerial(cycleCounter);
+		if (mem_.serialAwaiting())
+			break;
 #endif
 
+#ifdef HAVE_NETWORK
+		bool stall = false;
+#endif
 		if (mem_.halted()) {
 			if (cycleCounter < mem_.nextEventTime()) {
 				unsigned long cycles = mem_.nextEventTime() - cycleCounter;
@@ -516,6 +568,27 @@ void CPU::process(unsigned long const cycles) {
 			}
 		} else while (cycleCounter < mem_.nextEventTime()) {
 			unsigned char opcode;
+
+#ifdef HAVE_NETWORK
+			/* The game's block exchange routine (GB::setBlockHook). */
+			if (pc == blockHookPc_ && blockHook_) {
+				if (!blockSkip_) {
+					int const r = runBlockHook(a, pc, cycleCounter);
+					blockWait_ = r == BlockExchanger::WAIT;
+					if (blockWait_) {
+						stall = true;
+						break;
+					}
+					if (r == BlockExchanger::DONE) {
+						cycleCounter += 16;
+						continue;
+					}
+					blockSkip_ = true;
+				}
+			}
+			else
+				blockSkip_ = false;
+#endif
 
 			PC_READ(opcode);
 
@@ -1994,6 +2067,13 @@ void CPU::process(unsigned long const cycles) {
 			}
 		}
 
+#ifdef HAVE_NETWORK
+		if (stall) {
+			/* Waiting for the other end's block: the Game Boy stops here. */
+			pc_ = pc;
+			break;
+		}
+#endif
 		pc_ = pc;
 		cycleCounter = mem_.event(cycleCounter);
 	}

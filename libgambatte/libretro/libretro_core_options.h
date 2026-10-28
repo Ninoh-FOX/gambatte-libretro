@@ -853,16 +853,17 @@ struct retro_core_option_v2_definition option_defs_us[] = {
       "gambatte_gb_link_mode",
       "Game Link Mode",
       "Link Mode",
-      "When enabling networked Game Link functionality, specify whether current instance should run as a server or client.",
+      "When enabling networked Game Link functionality, specify whether current instance should run as a server or client. 'Cable Link (netplay)' links two consoles through RetroArch's netplay (no address to set): with the same game on both, each console runs both Game Boys and only the buttons are sent.",
       NULL,
       "gb_link",
       {
          { "Not Connected",  NULL },
          { "Network Server", NULL },
          { "Network Client", NULL },
+         { "Cable Link",     "Cable Link (netplay)" },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",

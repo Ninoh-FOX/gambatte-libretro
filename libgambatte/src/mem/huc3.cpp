@@ -18,6 +18,7 @@
 
 #include "huc3.h"
 #include "../savestate.h"
+#include "gambatte.h"
 #include "gambatte_log.h"
 
 namespace gambatte {
@@ -39,7 +40,7 @@ HuC3Chip::HuC3Chip()
 }
 
 void HuC3Chip::doLatch() {
-	uint64_t tmp = (halted_ ? haltTime_ : std::time(0)) - baseTime_;
+	uint64_t tmp = (halted_ ? haltTime_ : timeNow()) - baseTime_;
     
     unsigned minute = (tmp / 60) % 1440;
     unsigned day = (tmp / 86400) & 0xFFF;
@@ -181,7 +182,7 @@ void HuC3Chip::write(unsigned p, unsigned data) {
 void HuC3Chip::updateTime() {
     unsigned minute = (writingTime_ & 0xFFF) % 1440;
     unsigned day = (writingTime_ & 0xFFF000) >> 12;
-    baseTime_ = std::time(0) - minute*60 - day*86400;
+    baseTime_ = timeNow() - minute*60 - day*86400;
     haltTime_ = baseTime_;
     
 }

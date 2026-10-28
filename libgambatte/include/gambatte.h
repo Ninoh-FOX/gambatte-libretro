@@ -28,6 +28,13 @@
 #include <cstddef>
 
 namespace gambatte {
+
+/** Where the cartridge clocks (MBC3, HuC3) get the time from: seconds since
+  * 1970. Null (the default): the system clock. Shared by every GB. */
+typedef uint64_t (*TimeSource)(void);
+void setTimeSource(TimeSource source);
+uint64_t timeNow();
+
 #if defined(VIDEO_RGB565) || defined(VIDEO_ABGR1555)
 typedef uint16_t video_pixel_t;
 #else
@@ -95,6 +102,20 @@ public:
 #ifdef HAVE_NETWORK
 	/** Sets the callback used for transferring serial data. */
 	void setSerialIO(SerialIO *serial_io);
+	/** The serial data register (FF01). */
+	unsigned char serialData() const;
+	/** Whether the game waits for a transfer clocked by the other end of the cable. */
+	bool serialWaiting() const;
+	/** Whether an asynchronous transfer (SerialIO::async) waits for the other
+	  * end's byte: until then the Game Boy does not run (runFor returns at once). */
+	bool serialAwaiting() const;
+	/** When the CPU gets to `pc` (a routine in ROM bank 0 that exchanges a
+	  * block, see BlockExchanger), it asks `x` first; on DONE the received
+	  * block is written to DE, the routine's own HRAM flag (`ignoringFlag`,
+	  * FF80-FFFE, 0: none) cleared, and the routine returns. Null: off. */
+	void setBlockHook(unsigned short pc, unsigned char ignoringFlag, BlockExchanger *x);
+	/** Whether the Game Boy waits for a block (it does not run then). */
+	bool blockAwaiting() const;
 #endif
 	
 	/** Sets the directory used for storing save data. The default is the same directory as the ROM Image file. */

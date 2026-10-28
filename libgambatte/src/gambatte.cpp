@@ -24,6 +24,7 @@
 #include "bootloader.h"
 #include <sstream>
 #include <cstring>
+#include <ctime>
 
 namespace gambatte {
 struct GB::Priv {
@@ -54,7 +55,9 @@ long GB::runFor(gambatte::video_pixel_t *const videoBuf, const int pitch,
 }
    
 void GB::Priv::full_init(bool const clearSram) {
-   SaveState state;
+   /* (Value-initialized: fields a cartridge type does not use are saved
+    * as 0, not as whatever was on the stack.) */
+   SaveState state = SaveState();
    
    cpu.setStatePtrs(state);
    setInitState(state, cpu.isCgb(), gbaCgbMode, clearSram);
@@ -91,7 +94,12 @@ void GB::Priv::full_init(bool const clearSram) {
 void GB::reset() {
    /* Battery-backed SRAM and RTC must persist across a soft reset
     * (matching real-hardware behavior; the cart battery keeps
-    * volatile SRAM alive while the console is power-cycled). */
+    * volatile SRAM alive while the console is power-cycled). A reset
+    * during the boot ROM first puts the game's first bytes back (the boot
+    * ROM is copied over them until it ends): otherwise they would stay
+    * the boot ROM's if this reset does not run it, and become it for good
+    * if it does. */
+   p_->cpu.mem_.bootloader.call_FF50();
    p_->full_init(false);
 }
 
@@ -107,7 +115,37 @@ void GB::setBootloaderGetter(bool (*getter)(void* userdata, bool isgbc, uint8_t*
 void GB::setSerialIO(SerialIO *serial_io) {
 	p_->cpu.setSerialIO(serial_io);
 }
+
+unsigned char GB::serialData() const {
+	return p_->cpu.mem_.serialData();
+}
+
+bool GB::serialWaiting() const {
+	return p_->cpu.mem_.serialWaiting();
+}
+
+bool GB::serialAwaiting() const {
+	return p_->cpu.mem_.serialAwaiting();
+}
+
+void GB::setBlockHook(unsigned short pc, unsigned char ignoringFlag, BlockExchanger *x) {
+	p_->cpu.setBlockHook(pc, ignoringFlag, x);
+}
+
+bool GB::blockAwaiting() const {
+	return p_->cpu.blockAwaiting();
+}
 #endif
+
+static TimeSource timeSource;
+
+void setTimeSource(TimeSource source) {
+	timeSource = source;
+}
+
+uint64_t timeNow() {
+	return timeSource ? timeSource() : static_cast<uint64_t>(std::time(0));
+}
 
 void *GB::savedata_ptr() { return p_->cpu.savedata_ptr(); }
 unsigned GB::savedata_size() { return p_->cpu.savedata_size(); }
@@ -143,7 +181,9 @@ void GB::setDmgPaletteColor(unsigned palNum, unsigned colorNum, unsigned rgb32) 
 }
 
 bool GB::loadState(const void *data, size_t size) {
-   SaveState state;
+   /* (Value-initialized: fields a cartridge type does not use are saved
+    * as 0, not as whatever was on the stack.) */
+   SaveState state = SaveState();
    p_->cpu.setStatePtrs(state);
 
    if (StateSaver::loadState(state, data, size)) {
@@ -155,14 +195,18 @@ bool GB::loadState(const void *data, size_t size) {
 }
 
 void GB::saveState(void *data) {
-   SaveState state;
+   /* (Value-initialized: fields a cartridge type does not use are saved
+    * as 0, not as whatever was on the stack.) */
+   SaveState state = SaveState();
    p_->cpu.setStatePtrs(state);
    p_->cpu.saveState(state);
    StateSaver::saveState(state, data);
 }
 
 size_t GB::stateSize() const {
-   SaveState state;
+   /* (Value-initialized: fields a cartridge type does not use are saved
+    * as 0, not as whatever was on the stack.) */
+   SaveState state = SaveState();
    p_->cpu.setStatePtrs(state);
    p_->cpu.saveState(state);
    return StateSaver::stateSize(state);

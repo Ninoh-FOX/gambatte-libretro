@@ -137,7 +137,7 @@ public:
 	void setSaveDir(std::string const &dir) { cart_.setSaveDir(dir); }
 	void setInputGetter(InputGetter *getInput) { getInput_ = getInput; }
 #ifdef HAVE_NETWORK
-	void setSerialIO(SerialIO* serial_io) { serial_io_ = serial_io; }
+	void setSerialIO(SerialIO* serial_io) { serial_io_ = serial_io; serialAwait_ = false; }
 #endif
 	void setEndtime(unsigned long cc, unsigned long inc);
 	void setSoundBuffer(uint_least32_t *buf, std::size_t size) { psg_.setBuffer(buf, size); }
@@ -155,6 +155,16 @@ public:
 	void setGameShark(std::string const &codes) { interrupter_.setGameShark(codes); }
 #ifdef HAVE_NETWORK
 	void checkSerial(unsigned long cc);
+	/* The serial port as the other end of a cable sees it: the data
+	 * register, and whether a transfer on the external clock waits. */
+	unsigned char serialData() const { return ioamhram_[0x101]; }
+	bool serialWaiting() const {
+		return (ioamhram_[0x102] & 0x81) == 0x80
+			&& intreq_.eventTime(intevent_serial) == disabled_time;
+	}
+	/* An asynchronous transfer of ours waits for the other end: the Game
+	 * Boy stops until it comes (as a real one would never see it late). */
+	bool serialAwaiting() const { return serialAwait_; }
 #endif
 	void updateInput();
 
@@ -190,6 +200,8 @@ private:
 	unsigned char serialize_value_;
 	bool serialize_is_fastcgb_;
 	SerialIO *serial_io_;
+	bool serialAwait_;          /* An asynchronous transfer waits for its byte */
+	bool serialAwaitFast_;
 #endif
 	InputGetter *getInput_;
 	unsigned long divLastUpdate_;

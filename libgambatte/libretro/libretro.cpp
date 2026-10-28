@@ -10,6 +10,9 @@
 #include "bootloader.h"
 #ifdef HAVE_NETWORK
 #include "net_serial.h"
+#include "dual.h"
+#include <time.h>
+#include <unistd.h>
 #endif
 
 #if defined(__DJGPP__) && defined(__STRICT_ANSI__)
@@ -1642,12 +1645,142 @@ class SNESInput : public gambatte::InputGetter
 enum SerialMode {
    SERIAL_NONE,
    SERIAL_SERVER,
-   SERIAL_CLIENT
+   SERIAL_CLIENT,
+   SERIAL_CABLE       /* Cable Link over netplay (netpacket, dual.cpp) */
 };
 static NetSerial gb_net_serial;
 static SerialMode gb_serialMode = SERIAL_NONE;
 static int gb_NetworkPort = 12345;
 static std::string gb_NetworkClientAddr;
+
+/* Netplay (netpacket interface): the Cable Link. */
+static retro_netpacket_send_t netpacket_send_fn = NULL;
+static retro_netpacket_poll_receive_t netpacket_poll_fn = NULL;
+static unsigned netplay_clients = 0;
+
+static void netpacket_send(uint16_t to, const void *buf, size_t len)
+{
+   /* Flushed at once: what the other console waits for goes out now. */
+   if (netpacket_send_fn)
+      netpacket_send_fn(RETRO_NETPACKET_RELIABLE | RETRO_NETPACKET_FLUSH_HINT,
+            buf, len, to);
+}
+
+static void netpacket_poll(void)
+{
+   if (netpacket_poll_fn)
+      netpacket_poll_fn();
+}
+
+/* Wall clock, only to bound the waits on the network. */
+static uint64_t netpacket_time_usec(void)
+{
+   struct timespec ts;
+   clock_gettime(CLOCK_MONOTONIC, &ts);
+   return (uint64_t)ts.tv_sec * 1000000u + (uint64_t)(ts.tv_nsec / 1000);
+}
+
+static void dual_message(const char *text)
+{
+   struct retro_message msg;
+   msg.msg    = text;
+   msg.frames = 240;
+   environ_cb(RETRO_ENVIRONMENT_SET_MESSAGE, &msg);
+   gambatte_log(RETRO_LOG_INFO, "%s\n", text);
+}
+
+/* Everything that makes this Game Boy a different machine, besides the
+ * game: the other console runs a copy of it and must have the same (the
+ * hardware mode). */
+static unsigned load_flags = 0;
+
+static uint32_t machine_cfg(void)
+{
+   /* Not the boot ROMs: the link starts and resets the games without
+    * them (see dual.cpp). */
+   uint32_t h = 2166136261u;
+   h = (h ^ load_flags) * 16777619u;
+   return h;
+}
+
+/* The link mode option, read again when netplay starts: it may have been
+ * changed in the menu just before, with no frame run since (the frame is
+ * what reads changed options), and the cable would be another one. */
+static void read_cable_mode(void)
+{
+   struct retro_variable var = {0};
+   var.key = "gambatte_gb_link_mode";
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value)
+   {
+      const bool cable = !strcmp(var.value, "Cable Link");
+      if (cable && gb_serialMode != SERIAL_CABLE)
+      {
+         gb_net_serial.stop();
+         gb.setSerialIO(NULL);
+         gb_serialMode = SERIAL_CABLE;
+      }
+      else if (!cable && gb_serialMode == SERIAL_CABLE)
+         gb_serialMode = SERIAL_NONE;   /* (check_variables sets the rest) */
+   }
+}
+
+static void netpacket_start(uint16_t client_id,
+      retro_netpacket_send_t send_fn,
+      retro_netpacket_poll_receive_t poll_receive_fn)
+{
+   netpacket_send_fn = send_fn;
+   netpacket_poll_fn = poll_receive_fn;
+   netplay_clients   = 0;
+   read_cable_mode();
+   if (gb_serialMode == SERIAL_CABLE)
+   {
+      dual::set_cfg(machine_cfg());
+      dual::session_start(client_id);
+   }
+}
+
+static void netpacket_stop(void)
+{
+   netpacket_send_fn = NULL;
+   netpacket_poll_fn = NULL;
+   netplay_clients   = 0;
+   dual::session_stop();
+}
+
+static void netpacket_receive(const void *buf, size_t len, uint16_t client_id)
+{
+   if (gb_serialMode == SERIAL_CABLE)
+      dual::net_receive(buf, len, client_id);
+}
+
+/* The cable has two ends: one client, and only in the Cable Link mode. */
+static bool netpacket_connected(uint16_t client_id)
+{
+   read_cable_mode();
+   if (gb_serialMode != SERIAL_CABLE || netplay_clients >= 1)
+      return false;
+   if (!dual::peer_connected(client_id))
+      return false;
+   netplay_clients++;
+   return true;
+}
+
+static void netpacket_disconnected(uint16_t client_id)
+{
+   if (netplay_clients)
+      netplay_clients--;
+   dual::peer_disconnected(client_id);
+}
+
+static const struct retro_netpacket_callback netpacket_iface = {
+   netpacket_start,
+   netpacket_receive,
+   netpacket_stop,
+   NULL,                       /* poll */
+   netpacket_connected,
+   netpacket_disconnected,
+   "gambatte_plus cable 1",    /* both consoles must have the same */
+};
 #endif
 
 void retro_get_system_info(struct retro_system_info *info)
@@ -1750,6 +1883,19 @@ void retro_init(void)
    libretro_supports_ff_override = false;
    if (environ_cb(RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE, NULL))
       libretro_supports_ff_override = true;
+
+#ifdef HAVE_NETWORK
+   {
+      dual::Frontend fe;
+      fe.send       = netpacket_send;
+      fe.poll       = netpacket_poll;
+      fe.time_usec  = netpacket_time_usec;
+      fe.message    = dual_message;
+      fe.bootloader = get_bootloader_from_file;
+      fe.input      = &gb_input;
+      dual::init(fe);
+   }
+#endif
 }
 
 void retro_deinit(void)
@@ -1785,6 +1931,10 @@ void retro_deinit(void)
    deactivate_rumble();
    memset(&rumble, 0, sizeof(struct retro_rumble_interface));
    rumble_level = 0;
+
+#ifdef HAVE_NETWORK
+   dual::shutdown();
+#endif
 }
 
 void retro_set_environment(retro_environment_t cb)
@@ -1833,6 +1983,10 @@ void retro_set_environment(retro_environment_t cb)
    }
 #endif
 
+#ifdef HAVE_NETWORK
+   environ_cb(RETRO_ENVIRONMENT_SET_NETPACKET_INTERFACE, (void*)&netpacket_iface);
+#endif
+
    vfs_iface_info.required_interface_version = 2;
    vfs_iface_info.iface                      = NULL;
    if (environ_cb(RETRO_ENVIRONMENT_GET_VFS_INTERFACE, &vfs_iface_info))
@@ -1849,6 +2003,15 @@ void retro_set_controller_port_device(unsigned, unsigned) {}
 
 void retro_reset()
 {
+#ifdef HAVE_NETWORK
+   /* Linked: the reset goes with the buttons, both consoles restart both
+    * games in the same frame. */
+   if (dual::running())
+   {
+      dual::request_reset();
+      return;
+   }
+#endif
    /* gb.reset() now preserves battery-backed SRAM and RTC
     * automatically (matching real Game Boy behavior), so the
     * old new[]/memcpy/delete[] dance is no longer needed. */
@@ -1909,6 +2072,11 @@ bool retro_unserialize(const void *data, size_t size)
 {
    if (size != retro_serialize_size())
       return false;
+#ifdef HAVE_NETWORK
+   /* The other console's copy of this Game Boy could not follow. */
+   if (dual::running() || dual::pending())
+      return false;
+#endif
 
    /* gb.loadState now bounds-checks against the buffer size
     * and returns false on malformed input. Treat a parser
@@ -1962,6 +2130,11 @@ static std::vector<LibretroCheat> libretro_cheats;
 static void apply_libretro_cheats(void)
 {
    gb.clearCheats();
+#ifdef HAVE_NETWORK
+   /* The other console's copy of this Game Boy has none. */
+   if (dual::running() || dual::pending())
+      return;
+#endif
    for (size_t i = 0; i < libretro_cheats.size(); i++) {
       if (!libretro_cheats[i].used || !libretro_cheats[i].enabled)
          continue;
@@ -2429,6 +2602,8 @@ static void check_variables(bool startup)
          gb_serialMode = SERIAL_SERVER;
       else if (!strcmp(var.value, "Network Client"))
          gb_serialMode = SERIAL_CLIENT;
+      else if (!strcmp(var.value, "Cable Link"))
+         gb_serialMode = SERIAL_CABLE;
    }
 
    var.key = "gambatte_gb_link_network_port";
@@ -2475,6 +2650,8 @@ static void check_variables(bool startup)
       gb_NetworkClientAddr += octet;
    }
 
+   /* (While the Cable Link runs its own cable is plugged: left alone.) */
+   if (!dual::running() && !dual::pending() && !dual::realtime())
    switch(gb_serialMode)
    {
       case SERIAL_SERVER:
@@ -2790,6 +2967,10 @@ bool retro_load_game(const struct retro_game_info *info)
 
    if (gb.load(info->data, info->size, flags) != 0)
       return false;
+#ifdef HAVE_NETWORK
+   load_flags = flags;
+   dual::game_loaded(&gb, info->data, info->size, flags, machine_cfg());
+#endif
 #ifdef DUAL_MODE
    if (gb2.load(info->data, info->size, flags) != 0)
       return false;
@@ -2859,6 +3040,9 @@ bool retro_load_game_special(unsigned, const struct retro_game_info*, size_t) { 
 
 void retro_unload_game()
 {
+#ifdef HAVE_NETWORK
+   dual::game_unloaded();
+#endif
    rom_loaded = false;
    /* Clear per-game state so a subsequent retro_load_game with
     * a different ROM doesn't see leftovers (palette autodetect
@@ -2915,14 +3099,147 @@ size_t retro_get_memory_size(unsigned id)
    return 0;
 }
 
+#ifdef HAVE_NETWORK
+/* Cable Link: the sound of the player's Game Boy, as retro_run feeds it. */
+static void dual_audio(const int16_t *samples, unsigned frames)
+{
+   if (use_cc_resampler)
+      CC_renderaudio((audio_frame_t*)samples, frames);
+   else
+   {
+      unsigned read_avail;
+      blipper_renderaudio(samples, frames);
+      read_avail = blipper_read_avail(resampler_l);
+      if (read_avail >= (BLIP_BUFFER_SIZE >> 1))
+         audio_out_buffer_read_blipper(read_avail);
+   }
+}
+
+static void dual_audio_flush(void)
+{
+   if (!use_cc_resampler)
+      audio_out_buffer_read_blipper(blipper_read_avail(resampler_l));
+   audio_upload_samples();
+}
+
+/* A frame of both Game Boys (Cable Link). */
+static void retro_run_dual(void)
+{
+   bool updated = false;
+
+   input_poll_cb();
+   update_input_state();
+
+   switch (dual::frame_begin(libretro_input_state))
+   {
+      case dual::FRAME_RUN:
+         break;
+      case dual::FRAME_HOLD:
+      {
+         /* Ahead of the other console: this frame waits, in silence. */
+         static const int16_t silence[2 * SOUND_SAMPLES_PER_RUN] = { 0 };
+         unsigned left = SOUND_SAMPLES_PER_FRAME;
+         while (left)
+         {
+            const unsigned n = left < SOUND_SAMPLES_PER_RUN ? left : SOUND_SAMPLES_PER_RUN;
+            dual_audio(silence, n);
+            left -= n;
+         }
+         dual_audio_flush();
+         video_cb(NULL, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_PITCH * sizeof(gambatte::video_pixel_t));
+         return;
+      }
+      default:
+         /* The other console's buttons for this frame are not here yet. */
+         video_cb(NULL, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_PITCH * sizeof(gambatte::video_pixel_t));
+         return;
+   }
+
+   dual::run_frame(video_buf, VIDEO_PITCH, dual_audio);
+   dual::frame_end();
+
+   if (blend_frames)
+      blend_frames();
+   video_cb(video_buf, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_PITCH * sizeof(gambatte::video_pixel_t));
+   dual_audio_flush();
+
+   if (rumble_active)
+      apply_rumble();
+
+   /* (The frame counters keep step, for when the link ends.) */
+   libretro_samples_count += SOUND_SAMPLES_PER_FRAME;
+   libretro_frames_count++;
+
+   if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated)
+      check_variables(false);
+}
+#endif
+
+#ifdef HAVE_NETWORK
+/* Real time cable: the frame is not run now (the Game Boy waits for the
+ * other console): the last picture again, and a frame of silence. */
+static void realtime_skip_frame(void)
+{
+   static const int16_t silence[2 * SOUND_SAMPLES_PER_RUN] = { 0 };
+   unsigned left = SOUND_SAMPLES_PER_FRAME;
+   while (left)
+   {
+      const unsigned n = left < SOUND_SAMPLES_PER_RUN ? left : SOUND_SAMPLES_PER_RUN;
+      dual_audio(silence, n);
+      left -= n;
+   }
+   dual_audio_flush();
+   video_cb(NULL, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_PITCH * sizeof(gambatte::video_pixel_t));
+}
+#endif
+
 void retro_run()
 {
    /* libretro_samples_count and libretro_frames_count are
     * file-scope so they can be reset in retro_load_game,
     * retro_reset, and retro_unserialize. */
 
+#ifdef HAVE_NETWORK
+   if (gb_serialMode == SERIAL_CABLE)
+   {
+      if (dual::setting_up())
+      {
+         /* Both Game Boys are being set up: the game waits. */
+         video_cb(NULL, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_PITCH * sizeof(gambatte::video_pixel_t));
+         return;
+      }
+      if (dual::running())
+      {
+         retro_run_dual();
+         return;
+      }
+   }
+#endif
+
    input_poll_cb();
    update_input_state();
+
+#ifdef HAVE_NETWORK
+   const uint64_t frame_t0 = netpacket_time_usec();
+   if (dual::realtime())
+   {
+      /* Ahead of the other console while bytes go: wait for it a bit
+       * (a byte from it ends the wait), then try again next frame. */
+      dual::realtime_tick();
+      netpacket_poll();
+      while (dual::realtime_wait())
+      {
+         if (netpacket_time_usec() - frame_t0 > 12000)
+         {
+            realtime_skip_frame();
+            return;
+         }
+         usleep(200);
+         netpacket_poll();
+         dual::realtime_tick();
+      }
+   }
+#endif
 
    uint64_t expected_frames = libretro_samples_count / SOUND_SAMPLES_PER_FRAME;
    if (libretro_frames_count < expected_frames) // Detect frame dupes.
@@ -2941,6 +3258,26 @@ void retro_run()
 
    while (gb.runFor(video_buf, VIDEO_PITCH, sound_buf.u32, SOUND_BUFF_SIZE, samples) == -1)
    {
+#ifdef HAVE_NETWORK
+      /* Real time cable: the network is read between the slices of a
+       * frame too, so that a byte from the other end is answered (and one
+       * for us read) soon, not only between frames. While the Game Boy
+       * waits for one (it does not run then), the frame waits too, but not
+       * for long: then it is shown again, in silence, and the wait goes on
+       * next time. */
+      dual::realtime_tick();
+      if (dual::realtime())
+         netpacket_poll();
+      if (gb.serialAwaiting() || gb.blockAwaiting())
+      {
+         if (netpacket_time_usec() - frame_t0 > 12000)
+         {
+            realtime_skip_frame();
+            return;
+         }
+         usleep(200);
+      }
+#endif
       if (use_cc_resampler)
          CC_renderaudio((audio_frame_t*)sound_buf.u32, samples);
       else
@@ -2955,6 +3292,9 @@ void retro_run()
       libretro_samples_count += samples;
       samples = SOUND_SAMPLES_PER_RUN;
    }
+#ifdef HAVE_NETWORK
+   dual::realtime_frame_done();
+#endif
 #ifdef DUAL_MODE
    while (gb2.runFor(video_buf + GB_SCREEN_WIDTH, VIDEO_PITCH, sound_buf.u32, samples) == -1) {}
 #endif

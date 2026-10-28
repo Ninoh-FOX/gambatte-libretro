@@ -1364,9 +1364,10 @@ struct retro_core_option_v2_definition option_defs_ar[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_AR },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_AR },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_AR },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -3000,9 +3001,10 @@ struct retro_core_option_v2_definition option_defs_ast[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_AST },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_AST },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_AST },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -4636,9 +4638,10 @@ struct retro_core_option_v2_definition option_defs_be[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_BE },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_BE },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_BE },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -6272,9 +6275,10 @@ struct retro_core_option_v2_definition option_defs_bg[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_BG },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_BG },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_BG },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -7908,9 +7912,10 @@ struct retro_core_option_v2_definition option_defs_ca[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_CA },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_CA },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_CA },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -9544,9 +9549,10 @@ struct retro_core_option_v2_definition option_defs_chs[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_CHS },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_CHS },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_CHS },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -11180,9 +11186,10 @@ struct retro_core_option_v2_definition option_defs_cht[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_CHT },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_CHT },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_CHT },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -12816,9 +12823,10 @@ struct retro_core_option_v2_definition option_defs_cs[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_CS },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_CS },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_CS },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -14452,9 +14460,10 @@ struct retro_core_option_v2_definition option_defs_cy[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_CY },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_CY },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_CY },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -16088,9 +16097,10 @@ struct retro_core_option_v2_definition option_defs_da[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_DA },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_DA },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_DA },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -17724,9 +17734,10 @@ struct retro_core_option_v2_definition option_defs_de[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_DE },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_DE },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_DE },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -19360,9 +19371,10 @@ struct retro_core_option_v2_definition option_defs_el[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_EL },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_EL },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_EL },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -20996,9 +21008,10 @@ struct retro_core_option_v2_definition option_defs_en[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_EN },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_EN },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_EN },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -22632,9 +22645,10 @@ struct retro_core_option_v2_definition option_defs_eo[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_EO },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_EO },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_EO },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -24268,9 +24282,10 @@ struct retro_core_option_v2_definition option_defs_es[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_ES },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_ES },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_ES },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -25904,9 +25919,10 @@ struct retro_core_option_v2_definition option_defs_fa[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_FA },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_FA },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_FA },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -27540,9 +27556,10 @@ struct retro_core_option_v2_definition option_defs_fi[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_FI },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_FI },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_FI },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -29176,9 +29193,10 @@ struct retro_core_option_v2_definition option_defs_fr[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_FR },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_FR },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_FR },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -30812,9 +30830,10 @@ struct retro_core_option_v2_definition option_defs_ga[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_GA },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_GA },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_GA },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -32448,9 +32467,10 @@ struct retro_core_option_v2_definition option_defs_gl[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_GL },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_GL },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_GL },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -34084,9 +34104,10 @@ struct retro_core_option_v2_definition option_defs_he[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_HE },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_HE },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_HE },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -35720,9 +35741,10 @@ struct retro_core_option_v2_definition option_defs_hr[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_HR },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_HR },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_HR },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -37356,9 +37378,10 @@ struct retro_core_option_v2_definition option_defs_hu[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_HU },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_HU },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_HU },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -38992,9 +39015,10 @@ struct retro_core_option_v2_definition option_defs_id[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_ID },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_ID },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_ID },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -40628,9 +40652,10 @@ struct retro_core_option_v2_definition option_defs_it[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_IT },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_IT },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_IT },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -42264,9 +42289,10 @@ struct retro_core_option_v2_definition option_defs_ja[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_JA },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_JA },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_JA },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -43900,9 +43926,10 @@ struct retro_core_option_v2_definition option_defs_ko[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_KO },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_KO },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_KO },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -45536,9 +45563,10 @@ struct retro_core_option_v2_definition option_defs_nl[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_NL },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_NL },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_NL },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -47172,9 +47200,10 @@ struct retro_core_option_v2_definition option_defs_no[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_NO },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_NO },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_NO },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -48808,9 +48837,10 @@ struct retro_core_option_v2_definition option_defs_or[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_OR },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_OR },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_OR },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -50444,9 +50474,10 @@ struct retro_core_option_v2_definition option_defs_pl[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_PL },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_PL },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_PL },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -52080,9 +52111,10 @@ struct retro_core_option_v2_definition option_defs_pt_br[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_PT_BR },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_PT_BR },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_PT_BR },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -53716,9 +53748,10 @@ struct retro_core_option_v2_definition option_defs_pt_pt[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_PT_PT },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_PT_PT },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_PT_PT },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -55352,9 +55385,10 @@ struct retro_core_option_v2_definition option_defs_ru[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_RU },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_RU },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_RU },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -56988,9 +57022,10 @@ struct retro_core_option_v2_definition option_defs_sk[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_SK },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_SK },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_SK },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -58624,9 +58659,10 @@ struct retro_core_option_v2_definition option_defs_sr[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_SR },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_SR },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_SR },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -60260,9 +60296,10 @@ struct retro_core_option_v2_definition option_defs_sv[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_SV },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_SV },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_SV },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -61896,9 +61933,10 @@ struct retro_core_option_v2_definition option_defs_th[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_TH },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_TH },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_TH },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -63532,9 +63570,10 @@ struct retro_core_option_v2_definition option_defs_tr[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_TR },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_TR },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_TR },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -65168,9 +65207,10 @@ struct retro_core_option_v2_definition option_defs_tt[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_TT },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_TT },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_TT },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -66804,9 +66844,10 @@ struct retro_core_option_v2_definition option_defs_uk[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_UK },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_UK },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_UK },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -68440,9 +68481,10 @@ struct retro_core_option_v2_definition option_defs_val[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_VAL },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_VAL },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_VAL },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",
@@ -70076,9 +70118,10 @@ struct retro_core_option_v2_definition option_defs_vn[] = {
          { "Not Connected",  OPTION_VAL_NOT_CONNECTED_VN },
          { "Network Server", OPTION_VAL_NETWORK_SERVER_VN },
          { "Network Client", OPTION_VAL_NETWORK_CLIENT_VN },
+         { "Cable Link",     NULL },
          { NULL, NULL },
       },
-      "Not Connected"
+      "Cable Link"
    },
    {
       "gambatte_gb_link_network_port",

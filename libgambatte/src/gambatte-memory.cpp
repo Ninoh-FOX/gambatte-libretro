@@ -30,6 +30,8 @@ Memory::Memory(Interrupter const &interrupter) :
 #ifdef HAVE_NETWORK
   serialize_value_(0xFF)
 , serialize_is_fastcgb_(false),
+  serialAwait_(false)
+, serialAwaitFast_(false),
 #endif
    getInput_(0)
 #ifdef HAVE_NETWORK
@@ -90,6 +92,9 @@ static int serialCntFrom(unsigned long cyclesUntilDone, bool cgbFast) {
 }
 
 void Memory::loadState(SaveState const &state) {
+#ifdef HAVE_NETWORK
+	serialAwait_ = false;
+#endif
 	psg_.loadState(state);
 	lcd_.loadState(state, state.mem.oamDmaPos < 0xA0 ? cart_.rdisabledRam() : ioamhram_);
 	tima_.loadState(state, TimaInterruptRequester(intreq_));
@@ -163,6 +168,15 @@ void Memory::startSerialTransfer(unsigned long cc, unsigned char data, bool fast
 }
 
 void Memory::checkSerial(unsigned long const cc) {
+	// An asynchronous transfer of ours: is the other end's byte here?
+	if (serialAwait_) {
+		unsigned char data;
+		if (serial_io_ && serial_io_->reply(data)) {
+			serialAwait_ = false;
+			startSerialTransfer(cc, data, serialAwaitFast_);
+		}
+		return;
+	}
 	// Periodically checks if serial data is received
 	if ((serial_io_ != 0) &&
 		 ((ioamhram_[0x102] & 0x80) == 0x80) &&
@@ -173,6 +187,8 @@ void Memory::checkSerial(unsigned long const cc) {
 			startSerialTransfer(cc, data, fastCgb);
 		}
 	}
+	if (serial_io_ != 0 && serial_io_->async())
+		serial_io_->idle(serialWaiting());
 }
 #endif
 
@@ -687,13 +703,34 @@ void Memory::nontrivial_ff_write(unsigned const p, unsigned data, unsigned long 
 		serialCnt_ = 8;
 
 #ifdef HAVE_NETWORK
+		if (serialAwait_) {
+			/* The game gave up on its transfer. */
+			serialAwait_ = false;
+			if (serial_io_ != 0)
+				serial_io_->cancel();
+		}
 		if ((data & 0x81) == 0x81)
       {
-			unsigned char receivedByte = 0xFF;
-			if (serial_io_ != 0)
-				receivedByte = serial_io_->send(ioamhram_[0x101], (data & isCgb() * 2));
-			startSerialTransfer(cc, receivedByte, (data & isCgb() * 2));
+			if (serial_io_ != 0 && serial_io_->async()) {
+				/* It ends when the other end's byte comes (checkSerial). */
+				serial_io_->send(ioamhram_[0x101], (data & isCgb() * 2));
+				serialAwait_ = true;
+				serialAwaitFast_ = (data & isCgb() * 2) != 0;
+				intreq_.setEventTime<intevent_serial>(disabled_time);
+			}
+			else {
+				unsigned char receivedByte = 0xFF;
+				if (serial_io_ != 0)
+					receivedByte = serial_io_->send(ioamhram_[0x101], (data & isCgb() * 2));
+				startSerialTransfer(cc, receivedByte, (data & isCgb() * 2));
+			}
       }
+		else if ((data & 0x81) == 0x80 && serial_io_ != 0 && serial_io_->async()) {
+			/* Ready for the other end's clock (maybe for a few instructions
+			 * only, as Pokémon looking for the other player: it is a game
+			 * that listens, the other end's bytes may wait for it). */
+			serial_io_->idle(true);
+		}
 #else
 		if ((data & 0x81) == 0x81)
       {

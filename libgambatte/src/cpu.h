@@ -69,6 +69,13 @@ public:
 	void setSerialIO(SerialIO *serial_io) {
 		mem_.setSerialIO(serial_io);
 	}
+	void setBlockHook(unsigned short pc, unsigned char ignoringFlag, BlockExchanger *x) {
+		blockHookPc_ = pc;
+		blockHookFlag_ = ignoringFlag;
+		blockHook_ = x;
+		blockSkip_ = blockWait_ = false;
+	}
+	bool blockAwaiting() const { return blockWait_; }
 #endif
 
 	void setSaveDir(std::string const &sdir) {
@@ -105,6 +112,15 @@ private:
 	unsigned hf1, hf2, zf, cf;
 	unsigned char a_, b, c, d, e, /*f,*/ h, l;
 	bool skip_;
+#ifdef HAVE_NETWORK
+	BlockExchanger *blockHook_;
+	unsigned short blockHookPc_;
+	unsigned char blockHookFlag_;
+	bool blockSkip_;           /* The routine runs as is this time */
+	bool blockWait_;           /* Waiting for the other end's block */
+
+	int runBlockHook(unsigned char &a, unsigned short &pc, unsigned long cc);
+#endif
 
 	void process(unsigned long cycles);
 };
