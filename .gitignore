@@ -7,3 +7,7 @@
 *.bc
 .npmignore
 package.json
+
+# ndk-build output
+libgambatte/libretro/obj/
+libgambatte/libretro/libs/

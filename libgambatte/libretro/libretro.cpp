@@ -3101,8 +3101,15 @@ size_t retro_get_memory_size(unsigned id)
 
 #ifdef HAVE_NETWORK
 /* Cable Link: the sound of the player's Game Boy, as retro_run feeds it. */
+static int16_t dual_last[2];   /* The last stereo sample played */
+
 static void dual_audio(const int16_t *samples, unsigned frames)
 {
+   if (frames)
+   {
+      dual_last[0] = samples[2 * (frames - 1)];
+      dual_last[1] = samples[2 * (frames - 1) + 1];
+   }
    if (use_cc_resampler)
       CC_renderaudio((audio_frame_t*)samples, frames);
    else
@@ -3122,6 +3129,28 @@ static void dual_audio_flush(void)
    audio_upload_samples();
 }
 
+/* A frame the Game Boy does not run (it waits for the other console): the
+ * sound stays where it was. Silence (0) instead would be a step in the
+ * wave, heard as a pop each time. */
+static void dual_audio_gap(void)
+{
+   static int16_t hold[2 * SOUND_SAMPLES_PER_RUN];
+   unsigned left = SOUND_SAMPLES_PER_FRAME;
+   unsigned i;
+   for (i = 0; i < SOUND_SAMPLES_PER_RUN; i++)
+   {
+      hold[2 * i]     = dual_last[0];
+      hold[2 * i + 1] = dual_last[1];
+   }
+   while (left)
+   {
+      const unsigned n = left < SOUND_SAMPLES_PER_RUN ? left : SOUND_SAMPLES_PER_RUN;
+      dual_audio(hold, n);
+      left -= n;
+   }
+   dual_audio_flush();
+}
+
 /* A frame of both Game Boys (Cable Link). */
 static void retro_run_dual(void)
 {
@@ -3136,16 +3165,8 @@ static void retro_run_dual(void)
          break;
       case dual::FRAME_HOLD:
       {
-         /* Ahead of the other console: this frame waits, in silence. */
-         static const int16_t silence[2 * SOUND_SAMPLES_PER_RUN] = { 0 };
-         unsigned left = SOUND_SAMPLES_PER_FRAME;
-         while (left)
-         {
-            const unsigned n = left < SOUND_SAMPLES_PER_RUN ? left : SOUND_SAMPLES_PER_RUN;
-            dual_audio(silence, n);
-            left -= n;
-         }
-         dual_audio_flush();
+         /* Ahead of the other console: this frame waits. */
+         dual_audio_gap();
          video_cb(NULL, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_PITCH * sizeof(gambatte::video_pixel_t));
          return;
       }
@@ -3177,18 +3198,10 @@ static void retro_run_dual(void)
 
 #ifdef HAVE_NETWORK
 /* Real time cable: the frame is not run now (the Game Boy waits for the
- * other console): the last picture again, and a frame of silence. */
+ * other console): the last picture again, and the sound held a frame. */
 static void realtime_skip_frame(void)
 {
-   static const int16_t silence[2 * SOUND_SAMPLES_PER_RUN] = { 0 };
-   unsigned left = SOUND_SAMPLES_PER_FRAME;
-   while (left)
-   {
-      const unsigned n = left < SOUND_SAMPLES_PER_RUN ? left : SOUND_SAMPLES_PER_RUN;
-      dual_audio(silence, n);
-      left -= n;
-   }
-   dual_audio_flush();
+   dual_audio_gap();
    video_cb(NULL, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_PITCH * sizeof(gambatte::video_pixel_t));
 }
 #endif
