@@ -116,6 +116,14 @@ void GB::setSerialIO(SerialIO *serial_io) {
 	p_->cpu.setSerialIO(serial_io);
 }
 
+void GB::setInfraredIO(InfraredIO *ir) {
+	p_->cpu.mem_.setInfraredIO(ir);
+}
+
+unsigned long GB::cycleCounter() const {
+	return p_->cpu.cycleCounter();
+}
+
 unsigned char GB::serialData() const {
 	return p_->cpu.mem_.serialData();
 }

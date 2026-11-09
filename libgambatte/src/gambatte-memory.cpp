@@ -36,6 +36,7 @@ Memory::Memory(Interrupter const &interrupter) :
    getInput_(0)
 #ifdef HAVE_NETWORK
 , serial_io_(0)
+, ir_io_(0)
 #endif
 , divLastUpdate_(0)
 , lastOamDmaUpdate_(disabled_time)
@@ -607,6 +608,15 @@ unsigned Memory::nontrivial_ff_read(unsigned const p, unsigned long const cc) {
 		return lcd_.cgbBgColorRead(ioamhram_[0x168] & 0x3F, cc);
 	case 0x6B:
 		return lcd_.cgbSpColorRead(ioamhram_[0x16A] & 0x3F, cc);
+#ifdef HAVE_NETWORK
+	case 0x56:
+		/* Infrared: bit 1 is 0 while light comes in, with reading on
+		 * (bits 6-7) */
+		if (isCgb() && ir_io_ && (ioamhram_[0x156] & 0xC0) == 0xC0)
+			return ir_io_->irLight(cc) ? (ioamhram_[0x156] & ~0x02)
+			                           : (ioamhram_[0x156] | 0x02);
+		break;
+#endif
 	default:
 		break;
 	}
@@ -1107,8 +1117,13 @@ void Memory::nontrivial_ff_write(unsigned const p, unsigned data, unsigned long 
 
 		return;
 	case 0x56:
-		if (isCgb())
+		if (isCgb()) {
 			ioamhram_[0x156] = data | 0x3E;
+#ifdef HAVE_NETWORK
+			if (ir_io_)
+				ir_io_->irWrite(data, cc);
+#endif
+		}
 
 		return;
 	case 0x68:

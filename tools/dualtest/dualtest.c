@@ -243,6 +243,7 @@ static const char *opt(int who, const char *key) {
     if ((v = opt_env(var, key)) || (v = opt_env("OPTS", key)))
       return v;
   }
+  if (!strcmp(key, "gambatte_gb_link_mode")) return getenv("SERIAL") ? getenv("SERIAL") : "Cable Link";
   if (!strcmp(key, "gpsp_serial")) return getenv("SERIAL") ? getenv("SERIAL") : "mul_cable";
   /* BIOSDIR=dir: the official BIOS, dir/gba_bios.bin */
   if (!strcmp(key, "gpsp_bios")) return getenv("BIOSDIR") ? "official" : "builtin";

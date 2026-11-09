@@ -145,6 +145,67 @@ public:
    }
 };
 
+/* The infrared ports (Game Boy Color, RP) facing each other. Each end
+ * keeps when its LED went on and off, on its Game Boy's own clock (cycles
+ * since the link started, the same on both consoles: it only depends on
+ * what the Game Boy ran). A Game Boy reading its sensor at time t sees the
+ * other LED as it was at t - IR_LAG: the other Game Boy is never more than
+ * a slice (512 cycles) away, so that part of its past is always known, on
+ * both consoles alike, whichever Game Boy runs first. The lag is like a
+ * short distance between the two (0.24 ms); the games time the pulses by
+ * the edges, which keep their spacing (Pokemon's Mystery Gift, Pinball's
+ * score transfer). */
+#define IR_LAG   1024
+#define IR_HIST  1024          /* LED changes kept (a frame of fast pulses) */
+
+class IrEnd : public gambatte::InfraredIO {
+public:
+   IrEnd *peer;
+   u64 base;                    /* Our clock when this runFor started... */
+   unsigned long cc0;           /* ...and the Game Boy's cycle counter then */
+   u64 t[IR_HIST];
+   bool v[IR_HIST];
+   unsigned head, n;
+   bool led, before;            /* before: the LED before the oldest change kept */
+
+   IrEnd() : peer(0) { clear(); }
+   void clear() { base = 0; cc0 = 0; head = n = 0; led = before = false; }
+   u64 now(unsigned long cc) const { return base + (u64)(unsigned long)(cc - cc0); }
+
+   void irWrite(unsigned char value, unsigned long cc) {
+      const bool on = (value & 1) != 0;
+      unsigned i;
+      if (on == led)
+         return;
+      led = on;
+      if (n == IR_HIST) {
+         before = v[(head + IR_HIST - n) % IR_HIST];
+         n--;
+      }
+      i = head;
+      t[i] = now(cc);
+      v[i] = on;
+      head = (head + 1) % IR_HIST;
+      n++;
+   }
+
+   /* Our LED at time `when` */
+   bool led_at(u64 when) const {
+      unsigned k;
+      for (k = 1; k <= n; k++) {
+         const unsigned i = (head + IR_HIST - k) % IR_HIST;
+         if (t[i] <= when)
+            return v[i];
+      }
+      return before;
+   }
+
+   bool irLight(unsigned long cc) {
+      const u64 tn = now(cc);
+      return peer && tn >= IR_LAG && peer->led_at(tn - IR_LAG);
+   }
+};
+
 static Frontend fe;
 static void rt_send(u32 type, const u32 *words, u32 nwords);
 static void rt_send_data(u32 type, const u32 *words, u32 nwords, const void *data, u32 len);
@@ -399,6 +460,8 @@ static struct {
    bool peer_loaded;
    Keys keys_in[NP];
    CableEnd end[NP];
+   IrEnd ir[NP];
+   u64 ir_clock[NP];            /* Cycles run since the link started */
    u32 count[NP];               /* Samples run past the frame start */
 
    /* Real time cable (when the games differ) */
@@ -767,8 +830,11 @@ static void dual_stop(const char *why) {
       gambatte::setTimeSource(NULL);
       ds.local->setInputGetter(fe.input);
       ds.local->setSerialIO(NULL);
-      for (s = 0; s < NP; s++)
+      ds.local->setInfraredIO(NULL);
+      for (s = 0; s < NP; s++) {
          ds.end[s].clear();
+         ds.ir[s].clear();
+      }
       ds.loaded = false;
    }
 }
@@ -892,6 +958,10 @@ static bool load_machines(void) {
       ds.end[s].clear();
       ds.keys_in[s].keys = 0;
       ds.count[s] = 0;
+      ds.ir[s].peer = &ds.ir[s ^ 1];
+      ds.ir[s].clear();
+      ds.ir_clock[s] = 0;
+      gb->setInfraredIO(&ds.ir[s]);
       gb->setSerialIO(&ds.end[s]);
       gb->setInputGetter(&ds.keys_in[s]);
    }
@@ -1260,6 +1330,8 @@ static void reset_all(void) {
       slot_gb(s)->setBootloaderGetter(NULL);
       slot_gb(s)->reset();
       ds.end[s].clear();
+      ds.ir[s].clear();
+      ds.ir_clock[s] = 0;
    }
    ds.local->setBootloaderGetter(fe.bootloader);
 }
@@ -1343,8 +1415,12 @@ void run_frame(gambatte::video_pixel_t *video, int pitch,
          gambatte::GB *gb = slot_gb(s);
          while (ds.count[s] < target) {
             unsigned n = target - ds.count[s];
-            const long blit = gb->runFor(work[s], 160, sound,
-                                         sizeof(sound) / sizeof(sound[0]), n);
+            long blit;
+            ds.ir[s].base = ds.ir_clock[s];
+            ds.ir[s].cc0 = gb->cycleCounter();
+            blit = gb->runFor(work[s], 160, sound,
+                              sizeof(sound) / sizeof(sound[0]), n);
+            ds.ir_clock[s] += 2 * (u64)n;
             if (s == ds.my_slot) {
                audio((const int16_t*)sound, n);
                if (blit >= 0) {

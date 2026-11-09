@@ -42,6 +42,20 @@ class SerialIO
 		virtual void idle(bool waiting) { (void)waiting; }
 };
 
+/* The Game Boy Color infrared port (RP, FF56) to another Game Boy Color
+ * (see GB::setInfraredIO). cc: the CPU cycle counter (4194304 Hz) of the
+ * Game Boy, at the moment of the access. */
+class InfraredIO
+{
+	public:
+		virtual ~InfraredIO() {}
+		/* The game wrote RP: bit 0 is our LED. */
+		virtual void irWrite(unsigned char value, unsigned long cc) = 0;
+		/* The game reads RP with reading on: whether light from the other
+		 * Game Boy reaches our sensor right now. */
+		virtual bool irLight(unsigned long cc) = 0;
+};
+
 /* A routine of the game that exchanges a block over the cable, byte by byte
  * (Pokémon's Serial_ExchangeBytes: "send bc bytes from hl, receive bc bytes
  * to de"), done at once instead (see GB::setBlockHook). */

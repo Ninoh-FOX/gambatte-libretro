@@ -31,6 +31,7 @@ namespace gambatte {
 class InputGetter;
 #ifdef HAVE_NETWORK
 class SerialIO;
+class InfraredIO;
 #endif
 
 class Memory {
@@ -138,6 +139,7 @@ public:
 	void setInputGetter(InputGetter *getInput) { getInput_ = getInput; }
 #ifdef HAVE_NETWORK
 	void setSerialIO(SerialIO* serial_io) { serial_io_ = serial_io; serialAwait_ = false; }
+	void setInfraredIO(InfraredIO *ir_io) { ir_io_ = ir_io; }
 #endif
 	void setEndtime(unsigned long cc, unsigned long inc);
 	void setSoundBuffer(uint_least32_t *buf, std::size_t size) { psg_.setBuffer(buf, size); }
@@ -200,6 +202,7 @@ private:
 	unsigned char serialize_value_;
 	bool serialize_is_fastcgb_;
 	SerialIO *serial_io_;
+	InfraredIO *ir_io_;
 	bool serialAwait_;          /* An asynchronous transfer waits for its byte */
 	bool serialAwaitFast_;
 #endif

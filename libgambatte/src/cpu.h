@@ -95,6 +95,7 @@ public:
 #endif
 	void setSoundBuffer(uint_least32_t *buf, std::size_t size) { mem_.setSoundBuffer(buf, size); }
 	std::size_t fillSoundBuffer() { return mem_.fillSoundBuffer(cycleCounter_); }
+	unsigned long cycleCounter() const { return cycleCounter_; }
 	bool isCgb() const { return mem_.isCgb(); }
 
 	void setDmgPaletteColor(int palNum, int colorNum, unsigned long rgb32) {

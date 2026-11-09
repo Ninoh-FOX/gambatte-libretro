@@ -102,6 +102,11 @@ public:
 #ifdef HAVE_NETWORK
 	/** Sets the callback used for transferring serial data. */
 	void setSerialIO(SerialIO *serial_io);
+	/** The infrared port (CGB, RP) goes to `ir` (null: nothing in front). */
+	void setInfraredIO(InfraredIO *ir);
+	/** The CPU cycle counter now (4194304 Hz; it is rebased at the end of
+	  * runFor, so only differences within one runFor make sense). */
+	unsigned long cycleCounter() const;
 	/** The serial data register (FF01). */
 	unsigned char serialData() const;
 	/** Whether the game waits for a transfer clocked by the other end of the cable. */
