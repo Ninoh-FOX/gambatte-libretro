@@ -17,6 +17,10 @@
 #include "SFont.h"
 #include "menu.h"
 #include "scaler.h"
+#ifdef KORIKI
+#include "koriki_frame.h"
+static std::string koriki_border_name(const std::string &name, const char *def);
+#endif
 
 #include "src/audiosink.h"
 #include "menusounds.h"
@@ -59,7 +63,11 @@ Mix_Chunk *menusound_ok = NULL;
 int showfps = 0, ghosting = 1, biosenabled = 0, colorfilter = 0, gameiscgb = 0, buttonlayout = 0, stereosound = 1, prefercgb = 1, ffwhotkey = 1, stateautoload = 0, stateautosave = 0;
 uint32_t menupalblack = 0x000000, menupaldark = 0x505450, menupallight = 0xA8A8A8, menupalwhite = 0xF8FCF8;
 int filtervalue[12] = {135, 20, 0, 25, 0, 125, 20, 25, 0, 20, 105, 30};
-#ifndef VERSION_FUNKEYS
+#if defined(KORIKI)
+/* Koriki: borders drawn by code (koriki_frame.c) */
+std::string selectedscaler= "No Scaling", dmgbordername = "DMG", gbcbordername = "COLOR", palname = "DEFAULT", filtername = "NONE", currgamename = "default";
+int gridmode = 0;
+#elif !defined(VERSION_FUNKEYS)
 std::string selectedscaler= "No Scaling", dmgbordername = "DEFAULT", gbcbordername = "DEFAULT", palname = "DEFAULT", filtername = "NONE", currgamename = "default";
 #else
 std::string selectedscaler= "1.5x Smooth", dmgbordername = "NONE", gbcbordername = "NONE", palname = "DEFAULT", filtername = "NONE", currgamename = "default";
@@ -387,9 +395,9 @@ void menu_message(menu_t *menu) {
 	for (int i = 0; i < 5; ++i)
 	{
 		redraw(menu);
-    	SDL_Delay(100);
+    	gambatte::GB::menuDelay(100);
     	redraw_blank(menu);
-    	SDL_Delay(100);
+    	gambatte::GB::menuDelay(100);
 	}
     while (menu->quit == 0){
     	while (SDL_PollEvent(&event)) {
@@ -701,9 +709,9 @@ int menu_main(menu_t *menu) {
 			redraw(menu);
 		}
 		if(menuin == -1){
-			SDL_Delay(10);
+			gambatte::GB::menuDelay(10);
 		} else {
-			SDL_Delay(0);
+			gambatte::GB::menuDelay(0);
 		}	
 	}
 	if(forcemenuexit == 2) {
@@ -899,9 +907,9 @@ int menu_cheat(menu_t *menu) {
 			redraw_cheat(menu);
 		}
 		if(menuin == -1){
-			SDL_Delay(10);
+			gambatte::GB::menuDelay(10);
 		} else {
-			SDL_Delay(0);
+			gambatte::GB::menuDelay(0);
 		}
 	}
 	clean_menu_screen_cheat(menu);
@@ -1511,6 +1519,12 @@ void createBorderSurface(){
 
 void load_border(std::string borderfilename){ //load border from menu
 	SDL_FreeSurface(borderimg);
+#ifdef KORIKI
+	/* the border is drawn by code in paint_border(); borderimg only has to exist */
+	(void)borderfilename;
+	createBorderSurface();
+	return;
+#endif
 	std::string fullimgpath = (homedir + "/.gambatte/borders/");
 
 	if (borderfilename == "DEFAULT"){
@@ -1599,6 +1613,20 @@ void paint_border(SDL_Surface *surface){
 	SDL_Rect rect, rectb;
 	uint32_t barcolor = SDL_MapRGB(surface->format, 0, 0, 0);
 	int bpp = surface->format->BytesPerPixel;
+#ifdef KORIKI
+	{
+		int x, y, w, h;
+		int style = kf_border_from_name((gameiscgb ? gbcbordername : dmgbordername).c_str());
+		if (SDL_MUSTLOCK(surface)) SDL_LockSurface(surface);
+		if (bpp == 2 && koriki_picture_rect(surface->w, &x, &y, &w, &h))
+			kf_draw_border((uint16_t *)surface->pixels, surface->pitch / 2, surface->w, surface->h, x, y, w, h, style);
+		else
+			SDL_FillRect(surface, NULL, barcolor);
+		if (SDL_MUSTLOCK(surface)) SDL_UnlockSurface(surface);
+		(void)offset; (void)rect; (void)rectb;
+		return;
+	}
+#endif
 	if (selectedscaler == "No Scaling")
 	{
 		rect.x = 0;
@@ -2291,7 +2319,11 @@ void saveConfig(int pergame){
 		"GHOSTING %d\n"
 		"BUTTONLAYOUT %d\n"
 		"FFWHOTKEY %d\n"
-		"STEREOSOUND %d\n",
+		"STEREOSOUND %d\n"
+#ifdef KORIKI
+		"GRID %d\n"
+#endif
+		,
 		showfps,
 		selectedscaler.c_str(),
 		palname.c_str(),
@@ -2305,7 +2337,11 @@ void saveConfig(int pergame){
 		ghosting,
 		buttonlayout,
 		ffwhotkey,
-		stereosound) < 0) {
+		stereosound
+#ifdef KORIKI
+		, gridmode
+#endif
+		) < 0) {
     	printf("Failed to save config file.\n");
     } else {
     	printf("Config file successfully saved.\n");
@@ -2402,6 +2438,11 @@ void loadConfig(){
 			}
 			strcpy(charvalue, arg);
 			gbcbordername = std::string(charvalue);
+#ifdef KORIKI
+		} else if (!strcmp(line, "GRID")) {
+			sscanf(arg, "%d", &value);
+			gridmode = (value >= 0 && value <= 2) ? value : 0;
+#endif
 		} else if (!strcmp(line, "PREFERCGB")) {
 			sscanf(arg, "%d", &value);
 			prefercgb = value;
@@ -2428,5 +2469,51 @@ void loadConfig(){
 			stereosound = value;
 		}
 	}
+#ifdef KORIKI
+	dmgbordername = koriki_border_name(dmgbordername, "DMG");
+	gbcbordername = koriki_border_name(gbcbordername, "COLOR");
+#endif
 	fclose(cfile);
 }
+
+#ifdef KORIKI
+/* ---- Koriki: borders and grid ---- */
+
+/* Picture rectangle on the 640x480 screen when the grid is on (0 = off):
+ * every scaler, drawn there by kf_scale_grid(); the blocks are all the same
+ * size in "No Scaling" (2x) and "1.5x" (3x), alternate in the others. */
+int koriki_grid_rect(int *x, int *y, int *w, int *h) {
+	if (gridmode == 0)
+		return 0;
+	if (koriki_picture_rect(640, x, y, w, h))
+		return 1;
+	if (selectedscaler == "FullScreen Fast" || selectedscaler == "FullScreen Smooth") {
+		*x = 0; *y = 0; *w = 640; *h = 480;
+		return 1;
+	}
+	return 0;
+}
+
+/* Rectangle of the picture on a screen_w wide surface (320 or 640), for the
+ * scalers that leave room for a border; 0 for the others (full screen). */
+int koriki_picture_rect(int screen_w, int *x, int *y, int *w, int *h) {
+	int k = screen_w >= 640 ? 2 : 1;
+	if (selectedscaler == "No Scaling") {
+		*x = 80; *y = 48; *w = 160; *h = 144;
+	} else if (selectedscaler == "1.5x Fast" || selectedscaler == "1.5x Smooth") {
+		*x = 40; *y = 12; *w = 240; *h = 216;
+	} else if (selectedscaler == "Aspect 1.66x Fast" || selectedscaler == "Aspect 1.66x Smooth") {
+		*x = 27; *y = 0; *w = 266; *h = 240;
+	} else {
+		return 0;
+	}
+	*x *= k; *y *= k; *w *= k; *h *= k;
+	return 1;
+}
+
+static std::string koriki_border_name(const std::string &name, const char *def) {
+	if (name == "NONE" || name == "DMG" || name == "POCKET" || name == "COLOR")
+		return name;
+	return def;   /* PNG borders of DMS ("DEFAULT", "AUTO", files): not used */
+}
+#endif

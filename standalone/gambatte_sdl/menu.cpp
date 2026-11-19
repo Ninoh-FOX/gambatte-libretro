@@ -340,7 +340,9 @@ void main_menu() {
 #endif
     
     switchToMenuAudio();
+    gambatte_p->menuRunBegin();     /* Koriki: in a link session the game goes on */
     menu_main(menu);
+    gambatte_p->menuRunEnd();
     switchToEmulatorAudio();
     delete_menu(menu);
     SDL_EnableKeyRepeat(0, 100);
@@ -871,6 +873,9 @@ static void callback_dmgpalette(menu_t *caller_menu);
 static void callback_colorfilter(menu_t *caller_menu);
 static void callback_dmgborderimage(menu_t *caller_menu);
 static void callback_gbcborderimage(menu_t *caller_menu);
+#ifdef KORIKI
+static void callback_display(menu_t *caller_menu);
+#endif
 static void callback_system(menu_t *caller_menu);
 static void callback_savestatesettings(menu_t *caller_menu);
 static void callback_usebios(menu_t *caller_menu);
@@ -899,7 +904,13 @@ static void callback_settings(menu_t *caller_menu) {
     menu_add_entry(menu, menu_entry);
     menu_entry->callback = callback_showfps;
 
-#ifndef VERSION_FUNKEYS
+#ifdef KORIKI
+    /* Koriki: scaling, border and grid together */
+    menu_entry = new_menu_entry(0);
+    menu_entry_set_text(menu_entry, "Video");
+    menu_add_entry(menu, menu_entry);
+    menu_entry->callback = callback_display;
+#elif !defined(VERSION_FUNKEYS)
     menu_entry = new_menu_entry(0);
     menu_entry_set_text(menu_entry, "Scaler");
     menu_add_entry(menu, menu_entry);
@@ -912,7 +923,7 @@ static void callback_settings(menu_t *caller_menu) {
         menu_add_entry(menu, menu_entry);
         menu_entry->callback = callback_dmgpalette;
 
-#ifndef VERSION_FUNKEYS
+#if !defined(VERSION_FUNKEYS) && !defined(KORIKI)
         menu_entry = new_menu_entry(0);
         menu_entry_set_text(menu_entry, "DMG Border");
         menu_add_entry(menu, menu_entry);
@@ -925,7 +936,7 @@ static void callback_settings(menu_t *caller_menu) {
         menu_add_entry(menu, menu_entry);
         menu_entry->callback = callback_colorfilter;
 
-#ifndef VERSION_FUNKEYS
+#if !defined(VERSION_FUNKEYS) && !defined(KORIKI)
         menu_entry = new_menu_entry(0);
         menu_entry_set_text(menu_entry, "GBC Border");
         menu_add_entry(menu, menu_entry);
@@ -1312,7 +1323,11 @@ static void callback_scaler(menu_t *caller_menu) {
     menu = new_menu();
 
     menu_set_header(menu, menu_main_title.c_str());
+#ifdef KORIKI
+    menu_set_title(menu, "Scaling");
+#else
     menu_set_title(menu, "Scaler");
+#endif
     menu->back_callback = callback_back;
 
     menu_entry = new_menu_entry(0);
@@ -1684,6 +1699,118 @@ static void callback_selectedfilter(menu_t *caller_menu) {
         caller_menu->quit = 1;
     }
 }
+
+#ifdef KORIKI
+/* ==================== VIDEO MENU (KORIKI) =========================== */
+
+static void callback_koriki_border(menu_t *caller_menu);
+static void callback_koriki_grid(menu_t *caller_menu);
+static void callback_koriki_gridmode(menu_t *caller_menu);
+
+static void callback_display(menu_t *caller_menu) {
+    menu_t *menu;
+    menu_entry_t *menu_entry;
+    (void) caller_menu;
+    menu = new_menu();
+
+    menu_set_header(menu, menu_main_title.c_str());
+    menu_set_title(menu, "Video");
+    menu->back_callback = callback_back;
+
+    menu_entry = new_menu_entry(0);
+    menu_entry_set_text(menu_entry, "Scaling");
+    menu_add_entry(menu, menu_entry);
+    menu_entry->callback = callback_scaler;
+
+    menu_entry = new_menu_entry(0);
+    menu_entry_set_text(menu_entry, "Border");
+    menu_add_entry(menu, menu_entry);
+    menu_entry->callback = callback_koriki_border;
+
+    menu_entry = new_menu_entry(0);
+    menu_entry_set_text(menu_entry, "Grid");
+    menu_add_entry(menu, menu_entry);
+    menu_entry->callback = callback_koriki_grid;
+
+    playMenuSound_in();
+    menu_main(menu);
+    delete_menu(menu);
+}
+
+/* borders drawn by code: their names in the config, their text in the menu */
+static const char *koriki_border_names[] = { "NONE", "DMG", "POCKET", "COLOR" };
+static const char *koriki_border_texts[] = { "No border", "DMG", "Pocket", "Color" };
+
+static void callback_koriki_bordersel(menu_t *caller_menu) {
+    playMenuSound_ok();
+    std::string &name = gameiscgb ? gbcbordername : dmgbordername;
+    name = koriki_border_names[caller_menu->selected_entry];
+    load_border(name);
+    clean_menu_screen(caller_menu);
+    caller_menu->quit = 0;
+}
+
+static void callback_koriki_border(menu_t *caller_menu) {
+    menu_t *menu;
+    menu_entry_t *menu_entry;
+    const std::string &name = gameiscgb ? gbcbordername : dmgbordername;
+    (void) caller_menu;
+    menu = new_menu();
+
+    menu_set_header(menu, menu_main_title.c_str());
+    menu_set_title(menu, gameiscgb ? "GBC Border" : "DMG Border");
+    menu->back_callback = callback_back;
+
+    for (int i = 0; i < 4; i++) {
+        menu_entry = new_menu_entry(0);
+        menu_entry_set_text(menu_entry, koriki_border_texts[i]);
+        menu_add_entry(menu, menu_entry);
+        menu_entry->callback = callback_koriki_bordersel;
+        if (name == koriki_border_names[i])
+            menu->selected_entry = i;
+    }
+
+    playMenuSound_in();
+    menu_main(menu);
+    delete_menu(menu);
+}
+
+static void callback_koriki_gridmode(menu_t *caller_menu) {
+    playMenuSound_ok();
+    gridmode = caller_menu->selected_entry;      /* Off, Soft, Strong */
+    if (gameiscgb == 0)
+        load_border(dmgbordername);
+    else
+        load_border(gbcbordername);
+    blitter_p->setScreenRes();                    /* 640x480 with the grid */
+    clean_menu_screen(caller_menu);
+    caller_menu->quit = 0;
+}
+
+static void callback_koriki_grid(menu_t *caller_menu) {
+    menu_t *menu;
+    menu_entry_t *menu_entry;
+    static const char *texts[] = { "Off", "Soft", "Strong" };
+    (void) caller_menu;
+    menu = new_menu();
+
+    menu_set_header(menu, menu_main_title.c_str());
+    menu_set_title(menu, "Grid");
+    menu->back_callback = callback_back;
+
+    for (int i = 0; i < 3; i++) {
+        menu_entry = new_menu_entry(0);
+        menu_entry_set_text(menu_entry, texts[i]);
+        menu_add_entry(menu, menu_entry);
+        menu_entry->callback = callback_koriki_gridmode;
+    }
+    menu->selected_entry = gridmode;
+
+    playMenuSound_in();
+    menu_main(menu);
+    delete_menu(menu);
+}
+#endif
 
 /* ==================== DMG BORDER IMAGE MENU =========================== */
 

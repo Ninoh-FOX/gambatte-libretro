@@ -9,6 +9,8 @@
 extern "C" {
 #endif
 
+uint16_t hexcolor_to_rgb565(const uint32_t color);
+
 
 void scale15x(uint32_t *to, uint32_t *from);
 void scale15x_fast(uint32_t* dst, uint32_t* src);

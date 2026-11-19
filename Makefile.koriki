@@ -39,7 +39,7 @@ FE_CXX    := $(SA)/gambatte_sdl/src/audiosink.o $(SA)/gambatte_sdl/src/blitterwr
              $(SA)/common/resample/src/u48div.o \
              $(SA)/common/videolink/rgb32conv.o $(SA)/common/videolink/vfilterinfo.o \
              $(SA)/adapter/gb_adapter.o
-FE_C      := $(SA)/gambatte_sdl/SFont.o $(SA)/gambatte_sdl/scaler.o $(SA)/net.o
+FE_C      := $(SA)/gambatte_sdl/SFont.o $(SA)/gambatte_sdl/scaler.o $(SA)/net.o $(SA)/koriki_frame.o
 BR_OBJ    := $(SA)/adapter/core_bridge.o
 # libretro-common: a static core expects the frontend to have it (RetroArch does)
 LRC       := libgambatte/libretro-common

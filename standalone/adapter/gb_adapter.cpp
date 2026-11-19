@@ -28,6 +28,9 @@
 #include <vector>
 #include "core_bridge.h"
 #include "../net.h"
+#include <pthread.h>
+#include <time.h>
+#include <unistd.h>
 
 /* the frontend's (libmenu.cpp, C linkage there) */
 extern "C" {
@@ -174,6 +177,9 @@ static void audio_sample(int16_t l, int16_t r)
    audio.push_back(r);
 }
 
+/* the game runs behind the menu (GB::menuRunBegin) */
+static volatile bool menu_run_active;
+
 static void input_poll(void) {}
 
 static int16_t input_state(unsigned port, unsigned device, unsigned index, unsigned id)
@@ -187,8 +193,8 @@ static int16_t input_state(unsigned port, unsigned device, unsigned index, unsig
    int16_t mask = 0;
 
    (void)index;
-   if (port != 0 || device != RETRO_DEVICE_JOYPAD || !input)
-      return 0;
+   if (port != 0 || device != RETRO_DEVICE_JOYPAD || !input || menu_run_active)
+      return 0;                 /* no buttons for the game behind the menu */
    keys = (*input)();
    if (id == RETRO_DEVICE_ID_JOYPAD_MASK) {
       for (i = 0; i < 16; i++)
@@ -523,3 +529,102 @@ std::string const to_string(LoadRes r)
 }
 
 }  /* namespace */
+
+namespace gambatte {
+
+/* ---- Koriki: the game keeps running behind the menu in a link session ---- */
+
+static pthread_mutex_t menu_core_mx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_t menu_thread;
+static volatile bool menu_thread_on;
+static bool menu_locked;
+static GB *menu_gb;                /* the game of the open menu */
+
+/* someone on the other end of the cable */
+static bool link_peer(void)
+{
+   net_state_t st = net_state();
+   return st == NET_CONNECTED || (st == NET_HOSTING && net_clients() > 0);
+}
+
+static void *menu_run_thread(void *arg)
+{
+   GB *gb = (GB *)arg;
+   struct timespec next;
+   unsigned frames = 0;
+   clock_gettime(CLOCK_MONOTONIC, &next);
+   while (menu_thread_on) {
+      pthread_mutex_lock(&menu_core_mx);
+      if (menu_thread_on && link_peer()) {
+         std::size_t samples = 0;
+         gb->runFor(NULL, 0, NULL, samples);    /* picture and sound dropped */
+         frames++;
+      }
+      pthread_mutex_unlock(&menu_core_mx);
+      /* one Game Boy frame: 70224 cycles at 4194304 Hz = 16742.7 us */
+      next.tv_nsec += 16742706;
+      if (next.tv_nsec >= 1000000000) { next.tv_nsec -= 1000000000; next.tv_sec++; }
+      {
+         struct timespec now;
+         clock_gettime(CLOCK_MONOTONIC, &now);
+         if (now.tv_sec > next.tv_sec + 1)       /* far behind: do not race to catch up */
+            next = now;
+      }
+      clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL);
+   }
+   if (getenv("KORIKI_MENU_DEBUG"))
+      fprintf(stderr, "menu: %u frames run behind the menu\n", frames);
+   return NULL;
+}
+
+/* starts the thread (the menu holds the core) */
+static void menu_thread_start(void)
+{
+   if (menu_thread_on || !menu_gb || !link_peer())
+      return;
+   menu_run_active = true;
+   menu_thread_on = true;
+   if (pthread_create(&menu_thread, NULL, menu_run_thread, menu_gb) != 0) {
+      menu_thread_on = false;
+      menu_run_active = false;
+   }
+}
+
+void GB::menuRunBegin()
+{
+   pthread_mutex_lock(&menu_core_mx);
+   menu_locked = true;
+   menu_gb = p_->loaded ? this : NULL;
+   menu_thread_start();
+}
+
+void GB::menuRunEnd()
+{
+   if (menu_thread_on) {
+      menu_thread_on = false;
+      pthread_mutex_unlock(&menu_core_mx);       /* let the thread see it and finish */
+      pthread_join(menu_thread, NULL);
+      pthread_mutex_lock(&menu_core_mx);
+      menu_run_active = false;
+   }
+   menu_gb = NULL;
+   if (menu_locked) {
+      menu_locked = false;
+      pthread_mutex_unlock(&menu_core_mx);
+   }
+}
+
+void GB::menuDelay(unsigned ms)
+{
+   if (menu_locked)
+      menu_thread_start();     /* someone may have joined from the Link menu */
+   if (menu_thread_on) {
+      pthread_mutex_unlock(&menu_core_mx);
+      usleep((ms ? ms : 1) * 1000);             /* 0 would starve the thread */
+      pthread_mutex_lock(&menu_core_mx);
+   } else {
+      usleep(ms * 1000);
+   }
+}
+
+} // namespace gambatte

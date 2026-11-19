@@ -93,6 +93,18 @@ public:
 	static long sampleRate();
 
 	/**
+	  * Koriki: while the menu is open in a link session, the game keeps running
+	  * (no picture, no sound, no buttons) in a thread, so the other console
+	  * does not lose the cable. menuRunBegin() takes the core for the menu and
+	  * starts the thread when there is someone on the other end; the menu gives
+	  * the core to the thread only while it waits (menuDelay()); menuRunEnd()
+	  * stops the thread. Without a link session it is the old pause.
+	  */
+	void menuRunBegin();
+	void menuRunEnd();
+	static void menuDelay(unsigned ms);
+
+	/**
 	  * @param palNum 0 <= palNum < 3. One of BG_PALETTE, SP1_PALETTE and SP2_PALETTE.
 	  * @param colorNum 0 <= colorNum < 4
 	  */

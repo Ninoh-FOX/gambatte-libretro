@@ -4,7 +4,9 @@
  * DIR: saves and screens (DIR/NNNNN.ppm, SHOT_EVERY / SHOT_AT).
  * KEYS="from-to:key+key;..." (a b select start right left up down), frames
  * counted from the link-up (from the start with solo).
- * STATE_SAVE_AT=n saves state 0 at frame n, STATE_LOAD_AT=n loads it. */
+ * STATE_SAVE_AT=n saves state 0 at frame n, STATE_LOAD_AT=n loads it.
+ * MENU_AT=n MENU_MS=t: at frame n the menu is open for t ms, as the real
+ * menu does it (GB::menuRunBegin, menuDelay, menuRunEnd). */
 #include <gambatte.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,6 +83,16 @@ int main(int argc, char **argv)
             printf("[%s] state save %d\n", role, gb.saveState_NoOsd(video, 160));
          if (getenv("STATE_LOAD_AT") && sframe == (unsigned)atoi(getenv("STATE_LOAD_AT")))
             printf("[%s] state load %d\n", role, gb.loadState_NoOsd());
+         if (getenv("MENU_AT") && sframe == (unsigned)atoi(getenv("MENU_AT"))) {
+            unsigned long t0 = ms(), len = getenv("MENU_MS") ? atoi(getenv("MENU_MS")) : 3000;
+            printf("[%s] menu open at %u\n", role, sframe); fflush(stdout);
+            gb.menuRunBegin();
+            while (ms() - t0 < len)
+               gambatte::GB::menuDelay(10);
+            gb.menuRunEnd();
+            printf("[%s] menu closed after %lu ms\n", role, ms() - t0); fflush(stdout);
+            next = ms();
+         }
          if (++sframe >= frames) break;
       }
       if (!getenv("NOPACE")) { next += 17; long w = (long)(next - ms()); if (w > 0) usleep(w * 1000); else if (w < -500) next = ms(); }

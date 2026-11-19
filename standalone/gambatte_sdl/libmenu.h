@@ -132,6 +132,12 @@ extern int showfps, ghosting, biosenabled, colorfilter, gameiscgb, buttonlayout,
 extern uint32_t menupalblack, menupaldark, menupallight, menupalwhite;
 extern int filtervalue[12];
 extern std::string selectedscaler, dmgbordername, gbcbordername, palname, filtername, currgamename, homedir, ipuscaling;
+#ifdef KORIKI
+/* Koriki: grid (0 off, 1 soft, 2 strong) and the picture of the scaler */
+extern int gridmode;
+int koriki_grid_rect(int *x, int *y, int *w, int *h);
+int koriki_picture_rect(int screen_w, int *x, int *y, int *w, int *h);
+#endif
 extern int numcodes_gg, numcodes_gs, selectedcode, editmode;
 extern int ggcheats[NUM_GG_CODES*9];
 extern int gscheats[NUM_GS_CODES*8];

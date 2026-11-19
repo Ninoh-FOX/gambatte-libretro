@@ -21,6 +21,9 @@
 #include "scalebuffer.h"
 #include "../menu.h"
 #include "../scaler.h"
+#ifdef KORIKI
+#include "koriki_frame.h"
+#endif
 
 #include <string.h>
 #include <string>
@@ -140,6 +143,12 @@ void SdlBlitter::SetVid(int w, int h, int bpp){
 #else
 	screen = SDL_SetVideoMode(w, h, bpp, SDL_HWSURFACE | SDL_DOUBLEBUF);
 #endif
+#ifdef KORIKI
+	/* Koriki's SDL frees the old surface and makes a new one on every mode
+	 * change: the menu must draw on the new one (the grid switches to 640x480
+	 * from the menu) */
+	menu_set_screen(screen);
+#endif
 }
 
 void SdlBlitter::SetIPUAspectRatio(const char *ratiovalue){
@@ -195,6 +204,16 @@ void SdlBlitter::SetIPUSharpness(const char *svalue){
 }
 
 void SdlBlitter::setBufferDimensions() {
+#ifdef KORIKI
+	/* grid: the picture is drawn on a 640x480 screen */
+	int gx, gy, gw, gh;
+	if (koriki_grid_rect(&gx, &gy, &gw, &gh)) {
+		SetVid(640, 480, 16);
+		menu_set_screen(screen);
+		init_ghostframes();
+		return;
+	}
+#endif
 	SetIPUSharpness("1");
 	if (selectedscaler == "No Scaling" ||
 		selectedscaler == "1.5x Fast" ||
@@ -280,6 +299,14 @@ void SdlBlitter::setBufferDimensions() {
 }
 
 void SdlBlitter::setScreenRes() {
+#ifdef KORIKI
+	int gx, gy, gw, gh;
+	if (koriki_grid_rect(&gx, &gy, &gw, &gh)) {
+		if (screen->w != 640 || screen->h != 480)
+			SetVid(640, 480, 16);
+		return;
+	}
+#endif
 	SetIPUSharpness("1");
 	if (selectedscaler == "No Scaling" ||
 		selectedscaler == "1.5x Fast" ||
@@ -518,6 +545,24 @@ void anim_textoverlay(SDL_Surface *surface) {
 
 void SdlBlitter::applyScalerToSurface(SDL_Surface *sourcesurface) {
 	size_t offset;
+#ifdef KORIKI
+	{
+		/* same place and size as the scaler on 320x240 (nearest pixel on the
+		 * 640x480 screen), with the grid laid over it, the same everywhere, as
+		 * Koriki's ATC-GRID overlays */
+		int x, y, w, h;
+		if (koriki_grid_rect(&x, &y, &w, &h) && screen->w == 640) {
+			uint16_t *dst = (uint16_t *)screen->pixels + y * (screen->pitch / 2) + x;
+			if (SDL_MUSTLOCK(screen)) SDL_LockSurface(screen);
+			kf_scale_grid(dst, screen->pitch / 2,
+			              (const uint16_t *)sourcesurface->pixels, sourcesurface->pitch / 2,
+			              sourcesurface->w, sourcesurface->h, w, h, 0, 0);
+			kf_overlay_grid(dst, screen->pitch / 2, w, h, gridmode);
+			if (SDL_MUSTLOCK(screen)) SDL_UnlockSurface(screen);
+			return;
+		}
+	}
+#endif
 	if (selectedscaler == "No Scaling")
 	{
 		SDL_Rect dst;
