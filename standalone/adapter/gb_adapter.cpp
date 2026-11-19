@@ -11,7 +11,9 @@
  *  - The color filter of the DMS menu is applied here, to CGB games, as the
  *    old libgambatte did to their palette.
  *  - Saves are RetroArch's: <rom>.srm (save memory) and <rom>.rtc (clock), so
- *    they can be shared with RetroArch's.
+ *    they can be shared with RetroArch's. With KORIKI_SAVE_BASE set (the
+ *    launcher does it) they are that path + .srm/.rtc, RetroArch's own files;
+ *    the states stay in the save folder of the frontend.
  *  - States keep the DMS layout (5 bytes, an 80x72 preview, then the core's
  *    state), so the menu previews still work.
  *  - Netplay: the core's netpacket interface goes to net.c (Cable Link).
@@ -204,6 +206,7 @@ struct GB::Priv {
    int state_no;
    std::string rom_path;      /* as given */
    std::string base;          /* save_dir + ROM name without extension */
+   std::string savebase;      /* .srm/.rtc: $KORIKI_SAVE_BASE, or base */
    std::vector<unsigned char> rom;
    std::vector<unsigned char> saved_sram, saved_rtc;   /* last written */
    Priv() : loaded(false), state_no(0) {}
@@ -316,10 +319,14 @@ LoadRes GB::load(std::string const &romfile, unsigned flags, int preferCGB)
    p_->loaded = true;
    p_->rom_path = romfile;
    p_->base = save_dir + strip_ext(romfile);
+   {
+      const char *sb = getenv("KORIKI_SAVE_BASE");
+      p_->savebase = sb && *sb ? std::string(sb) : p_->base;
+   }
    p_->saved_sram.clear();
    p_->saved_rtc.clear();
-   load_mem(RETRO_MEMORY_SAVE_RAM, p_->base + ".srm", p_->saved_sram);
-   load_mem(RETRO_MEMORY_RTC, p_->base + ".rtc", p_->saved_rtc);
+   load_mem(RETRO_MEMORY_SAVE_RAM, p_->savebase + ".srm", p_->saved_sram);
+   load_mem(RETRO_MEMORY_RTC, p_->savebase + ".rtc", p_->saved_rtc);
    lut_filter = -1;
    net_set_game_name(strip_ext(romfile).c_str());
    return LOADRES_OK;
@@ -412,8 +419,8 @@ void GB::saveSavedata()
 {
    if (!p_->loaded)
       return;
-   save_mem(RETRO_MEMORY_SAVE_RAM, p_->base + ".srm", p_->saved_sram);
-   save_mem(RETRO_MEMORY_RTC, p_->base + ".rtc", p_->saved_rtc);
+   save_mem(RETRO_MEMORY_SAVE_RAM, p_->savebase + ".srm", p_->saved_sram);
+   save_mem(RETRO_MEMORY_RTC, p_->savebase + ".rtc", p_->saved_rtc);
 }
 
 std::string GB::getSaveStatePath(int statenum)
