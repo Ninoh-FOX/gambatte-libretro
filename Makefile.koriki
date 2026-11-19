@@ -1,0 +1,88 @@
+# Gambatte standalone for Koriki (Miyoo Mini): the DMS frontend (standalone/,
+# from gambatte-dms: menu, borders, color filters, palettes, DMG scalers) on
+# this core (Gambatte Plus: Cable Link through netplay), built as is as a
+# static library and driven through the libretro API (standalone/adapter).
+#   make -f Makefile.koriki            -> gambatte-plus
+TC        ?= /opt/miyoomini-toolchain
+CROSS     ?= $(TC)/bin/arm-linux-gnueabihf-
+SYSROOT   := $(TC)/arm-miyoomini-linux-gnueabihf/sysroot
+CC        := $(CROSS)gcc
+CXX       := $(CROSS)g++
+AR        := $(CROSS)ar
+BIN       := gambatte-plus
+CORE_LIB  := libgambatte_core.a
+SA        := standalone
+
+ARCH      := -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard
+OPT       := -O2 -fomit-frame-pointer -fdata-sections -ffunction-sections
+SDL_CFLAGS := -I$(SYSROOT)/usr/include/SDL -D_GNU_SOURCE=1 -D_REENTRANT
+
+# the frontend: the old libgambatte names it uses are renamed, so they do not
+# clash with the core's own gambatte::GB
+FE_DEFS   := -DHAVE_STDINT_H -DVERSION_BITTBOY -DKORIKI -DKORIKI_LAYOUT_BITTBOY \
+             -Dgambatte=dmsgb -include $(SA)/koriki_keys.h
+FE_INC    := -I$(SA) -I$(SA)/include -I$(SA)/gambatte_sdl -I$(SA)/gambatte_sdl/src -I$(SA)/common \
+             -I$(SA)/adapter -Ilibgambatte/libretro-common/include $(SDL_CFLAGS)
+FE_CFLAGS := $(OPT) $(ARCH) $(FE_DEFS) $(FE_INC)
+# the bridge to the core's Game Boy: the core's headers, its names
+CORE_INC  := -Ilibgambatte/include -Ilibgambatte/src -Ilibgambatte/libretro-common/include
+BR_CFLAGS := $(OPT) $(ARCH) -DHAVE_STDINT_H -DHAVE_INTTYPES_H -D__LIBRETRO__ -DVIDEO_RGB565 $(CORE_INC)
+
+FE_CXX    := $(SA)/gambatte_sdl/src/audiosink.o $(SA)/gambatte_sdl/src/blitterwrapper.o \
+             $(SA)/gambatte_sdl/src/parser.o $(SA)/gambatte_sdl/src/sdlblitter.o \
+             $(SA)/gambatte_sdl/src/str_to_sdlkey.o $(SA)/gambatte_sdl/src/usec.o \
+             $(SA)/gambatte_sdl/src/gambatte_sdl.o $(SA)/gambatte_sdl/menu.o $(SA)/gambatte_sdl/libmenu.o \
+             $(SA)/common/adaptivesleep.o $(SA)/common/rateest.o $(SA)/common/skipsched.o \
+             $(SA)/common/resample/src/chainresampler.o $(SA)/common/resample/src/i0.o \
+             $(SA)/common/resample/src/kaiser50sinc.o $(SA)/common/resample/src/kaiser70sinc.o \
+             $(SA)/common/resample/src/makesinckernel.o $(SA)/common/resample/src/resamplerinfo.o \
+             $(SA)/common/resample/src/u48div.o \
+             $(SA)/common/videolink/rgb32conv.o $(SA)/common/videolink/vfilterinfo.o \
+             $(SA)/adapter/gb_adapter.o
+FE_C      := $(SA)/gambatte_sdl/SFont.o $(SA)/gambatte_sdl/scaler.o $(SA)/net.o
+BR_OBJ    := $(SA)/adapter/core_bridge.o
+# libretro-common: a static core expects the frontend to have it (RetroArch does)
+LRC       := libgambatte/libretro-common
+LRC_OBJ   := $(LRC)/compat/compat_posix_string.o $(LRC)/compat/compat_snprintf.o \
+             $(LRC)/compat/compat_strcasestr.o $(LRC)/compat/compat_strl.o $(LRC)/compat/fopen_utf8.o \
+             $(LRC)/encodings/encoding_utf.o $(LRC)/file/file_path.o $(LRC)/file/file_path_io.o \
+             $(LRC)/streams/file_stream.o $(LRC)/streams/file_stream_transforms.o \
+             $(LRC)/string/stdstring.o $(LRC)/time/rtime.o $(LRC)/vfs/vfs_implementation.o
+LRC_CFLAGS := $(OPT) $(ARCH) -D__LIBRETRO__ -DHAVE_STDINT_H -I$(LRC)/include
+
+LIBS      := $(CORE_LIB) -lSDL $(SYSROOT)/usr/lib/libSDL_image-1.2.so.0 $(SYSROOT)/usr/lib/libSDL_mixer-1.2.so.0 \
+             -lpng -ljpeg -lz -lm -pthread -Wl,--gc-sections -Wl,--as-needed -s
+
+all: $(BIN)
+
+# the core, untouched but for the accessor (GAMBATTE_STANDALONE), through its Makefile
+$(CORE_LIB): FORCE
+	$(MAKE) -f Makefile.libretro platform=rpi2 STATIC_LINKING=1 TARGET=$(CORE_LIB) \
+		PLATFORM_DEFINES=-DGAMBATTE_STANDALONE CC=$(CC) CXX=$(CXX) AR=$(AR)
+
+$(SA)/gambatte_sdl/builddate.h:
+	echo "#define BUILDDATE \"$$(date +'%Y%m%d-%H%M%S')\"" > $@
+
+$(SA)/gambatte_sdl/menu.o: $(SA)/gambatte_sdl/builddate.h
+
+$(FE_CXX): %.o: %.cpp
+	$(CXX) $(FE_CFLAGS) -std=gnu++11 -c -o $@ $<
+
+$(FE_C): %.o: %.c
+	$(CC) $(FE_CFLAGS) -std=gnu11 -c -o $@ $<
+
+$(LRC_OBJ): %.o: %.c
+	$(CC) $(LRC_CFLAGS) -c -o $@ $<
+
+$(BR_OBJ): %.o: %.cpp
+	$(CXX) $(BR_CFLAGS) -std=gnu++11 -c -o $@ $<
+
+$(BIN): $(CORE_LIB) $(FE_CXX) $(FE_C) $(BR_OBJ) $(LRC_OBJ)
+	$(CXX) $(ARCH) -o $@ $(FE_CXX) $(FE_C) $(BR_OBJ) $(LRC_OBJ) $(LIBS)
+
+clean:
+	$(MAKE) -f Makefile.libretro platform=rpi2 STATIC_LINKING=1 TARGET=$(CORE_LIB) clean
+	rm -f $(FE_CXX) $(FE_C) $(BR_OBJ) $(LRC_OBJ) $(BIN) $(CORE_LIB) $(SA)/gambatte_sdl/builddate.h
+
+FORCE:
+.PHONY: all clean FORCE

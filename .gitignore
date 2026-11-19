@@ -7,3 +7,5 @@
 *.bc
 .npmignore
 package.json
+gambatte-plus
+standalone/gambatte_sdl/builddate.h

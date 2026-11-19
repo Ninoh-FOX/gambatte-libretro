@@ -56,6 +56,12 @@ static retro_audio_sample_batch_t audio_batch_cb;
 static retro_environment_t environ_cb;
 static gambatte::video_pixel_t* video_buf;
 static gambatte::GB gb;
+#ifdef GAMBATTE_STANDALONE
+/* The Koriki standalone (standalone/) drives this core through the libretro
+ * API, and through this for what the API has no call for (DMG palettes set
+ * by its menu, cheats from its menu, CGB or not). */
+gambatte::GB *gambatte_standalone_gb(void) { return &gb; }
+#endif
 
 static bool libretro_supports_option_categories = false;
 static bool libretro_supports_bitmasks          = false;
