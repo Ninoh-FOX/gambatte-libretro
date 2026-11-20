@@ -37,6 +37,14 @@
 /* the frontend's (libmenu.cpp, C linkage there) */
 extern "C" {
 extern int biosenabled;
+}
+
+/* the core's (libretro.cpp): it reads gambatte_gb_bootloader only in
+   retro_init(), which runs in GB::GB(), before the frontend loads its
+   config (biosenabled); set it again before each load and reset */
+extern bool use_official_bootloader;
+
+extern "C" {
 extern std::string homedir;
 void printOverlay(const char *text);
 }
@@ -391,6 +399,8 @@ LoadRes GB::load(std::string const &romfile, unsigned flags, int preferCGB)
    force_dmg = (flags & FORCE_DMG) || (!preferCGB && p_->rom[0x143] == 0x80);
    bios_dir = homedir + "/.gambatte/bios";
 
+   use_official_bootloader = biosenabled != 0;
+
    memset(&info, 0, sizeof(info));
    info.path = romfile.c_str();
    info.data = &p_->rom[0];
@@ -463,6 +473,7 @@ long GB::sampleRate()
 
 void GB::reset()
 {
+   use_official_bootloader = biosenabled != 0;   /* the menu may have changed it */
    if (p_->loaded)
       retro_reset();
 }
