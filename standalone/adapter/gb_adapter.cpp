@@ -17,6 +17,7 @@
  *  - States keep the DMS layout (5 bytes, an 80x72 preview, then the core's
  *    state), so the menu previews still work.
  *  - Netplay: the core's netpacket interface goes to net.c (Cable Link).
+ *  - Rumble: the Miyoo Mini motor (GPIO 48), as Koriki's RetroArch does it.
  */
 #include <gambatte.h>
 #include <pakinfo.h>
@@ -31,6 +32,7 @@
 #include <pthread.h>
 #include <time.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 /* the frontend's (libmenu.cpp, C linkage there) */
 extern "C" {
@@ -84,7 +86,79 @@ static const char *option(const char *key)
    if (!strcmp(key, "gambatte_gb_link_mode"))         return "Cable Link";
    if (!strcmp(key, "gambatte_up_down_allowed"))      return "disabled";
    if (!strcmp(key, "gambatte_gb_hwmode"))            return force_dmg ? "GB" : "Auto";
+   if (!strcmp(key, "gambatte_rumble_level"))         return "10";         /* as Koriki's RetroArch */
    return NULL;
+}
+
+/* ---------------------------------------------------------------- rumble */
+
+/* The motor (GPIO 48, 0 = on) is on or off, as in Koriki's RetroArch
+   (input/drivers_joypad/sdl_miyoomini_joypad.c): a non-zero strength turns
+   it on for at least RUMBLE_MS (200 ms x input_rumble_gain 50 %), so a short
+   pulse is felt. Unlike there, it stays on until the core sends a zero: this
+   core only calls when the strength changes, so a game that holds the motor
+   on sends one call, and RetroArch's timer stops it after 100 ms. runFor()
+   checks the time after each frame; the menu and exit turn it off. */
+#define RUMBLE_MS 100
+
+static bool rumble_on;
+static bool rumble_held;                /* last strength not zero */
+static unsigned rumble_until;
+static volatile bool menu_run_active;   /* the game runs behind the menu (GB::menuRunBegin) */
+
+static unsigned now_ms(void)
+{
+   struct timespec t;
+   clock_gettime(CLOCK_MONOTONIC, &t);
+   return (unsigned)(t.tv_sec * 1000u + t.tv_nsec / 1000000);
+}
+
+static void motor(bool on)
+{
+   static char last;
+   char value = on ? '0' : '1';
+   int fd;
+
+   if (value == last)
+      return;
+   fd = open("/sys/class/gpio/export", O_WRONLY);
+   if (fd >= 0) { if (write(fd, "48", 2) < 0) {} close(fd); }
+   fd = open("/sys/class/gpio/gpio48/direction", O_WRONLY);
+   if (fd >= 0) { if (write(fd, "out", 3) < 0) {} close(fd); }
+   fd = open("/sys/class/gpio/gpio48/value", O_WRONLY);
+   if (fd >= 0) { if (write(fd, &value, 1) < 0) {} close(fd); }
+   last = value;
+}
+
+static void rumble_stop(void)
+{
+   if (rumble_on)
+      motor(false);
+   rumble_on = rumble_held = false;
+}
+
+static bool set_rumble(unsigned port, enum retro_rumble_effect effect, uint16_t strength)
+{
+   (void)effect;
+   if (port)
+      return false;
+   if (menu_run_active)                  /* not while the menu is open */
+      return true;
+   rumble_held = strength != 0;
+   if (rumble_held) {
+      if (!rumble_on)
+         motor(true);
+      rumble_on = true;
+      rumble_until = now_ms() + RUMBLE_MS;
+   }
+   return true;
+}
+
+/* after each frame */
+static void rumble_update(void)
+{
+   if (rumble_on && !rumble_held && (int)(now_ms() - rumble_until) >= 0)
+      rumble_stop();
 }
 
 static void show_message(const char *text)
@@ -129,6 +203,9 @@ static bool environment(unsigned cmd, void *data)
       *(const char **)data = save_dir.c_str();
       return true;
    case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS:
+      return true;
+   case RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE:
+      ((struct retro_rumble_interface *)data)->set_rumble_state = set_rumble;
       return true;
    case RETRO_ENVIRONMENT_GET_CAN_DUPE:
       *(bool *)data = true;     /* a repeated frame: runFor() says no frame */
@@ -176,9 +253,6 @@ static void audio_sample(int16_t l, int16_t r)
    audio.push_back(l);
    audio.push_back(r);
 }
-
-/* the game runs behind the menu (GB::menuRunBegin) */
-static volatile bool menu_run_active;
 
 static void input_poll(void) {}
 
@@ -230,12 +304,14 @@ GB::GB() : p_(new Priv)
       retro_set_input_poll(input_poll);
       retro_set_input_state(input_state);
       retro_init();
+      atexit(rumble_stop);       /* the menu quits with exit() */
       core_inited = true;
    }
 }
 
 GB::~GB()
 {
+   rumble_stop();
    if (p_->loaded) {
       net_stop();
       saveSavedata();
@@ -359,6 +435,7 @@ std::ptrdiff_t GB::runFor(gambatte::uint_least32_t *videoBuf, std::ptrdiff_t pit
    frame_px = NULL;
    net_poll();
    retro_run();
+   rumble_update();
 
    if (videoBuf && frame_px) {
       make_lut();
@@ -593,6 +670,7 @@ static void menu_thread_start(void)
 void GB::menuRunBegin()
 {
    pthread_mutex_lock(&menu_core_mx);
+   rumble_stop();
    menu_locked = true;
    menu_gb = p_->loaded ? this : NULL;
    menu_thread_start();
