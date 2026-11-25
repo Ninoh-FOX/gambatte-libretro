@@ -168,6 +168,14 @@ void Memory::startSerialTransfer(unsigned long cc, unsigned char data, bool fast
 		: (cc & ~0xFFul) + 0x200 * 8);
 }
 
+void Memory::setSerialIO(SerialIO *serial_io, unsigned long cc) {
+	if (serialAwait_) {
+		serialAwait_ = false;
+		startSerialTransfer(cc, 0xFF, serialAwaitFast_);
+	}
+	serial_io_ = serial_io;
+}
+
 void Memory::checkSerial(unsigned long const cc) {
 	// An asynchronous transfer of ours: is the other end's byte here?
 	if (serialAwait_) {

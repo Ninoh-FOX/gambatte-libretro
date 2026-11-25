@@ -1204,7 +1204,7 @@ bool peer_connected(unsigned client_id) {
 }
 
 void peer_disconnected(unsigned client_id) {
-   if (!ds.is_host || ds.state == DS_OFF)
+   if (!ds.is_host)
       return;
    if (ds.state == DS_WAIT) {
       if (client_id < 64) {
@@ -1217,8 +1217,11 @@ void peer_disconnected(unsigned client_id) {
       }
       return;
    }
-   if (ds.slot_id[1] == (int)client_id)
+   if (ds.cand == (int)client_id || ds.slot_id[1] == (int)client_id ||
+       (ds.rt && ds.rt_peer == client_id)) {
       dual_stop(ds.state == DS_RUN ? "Cable Link: the other console left" : NULL);
+      session_start(0);  /* The frontend is still hosting. */
+   }
 }
 
 bool setting_up(void) {

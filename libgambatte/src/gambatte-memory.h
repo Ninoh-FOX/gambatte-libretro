@@ -138,7 +138,7 @@ public:
 	void setSaveDir(std::string const &dir) { cart_.setSaveDir(dir); }
 	void setInputGetter(InputGetter *getInput) { getInput_ = getInput; }
 #ifdef HAVE_NETWORK
-	void setSerialIO(SerialIO* serial_io) { serial_io_ = serial_io; serialAwait_ = false; }
+	void setSerialIO(SerialIO* serial_io, unsigned long cc);
 	void setInfraredIO(InfraredIO *ir_io) { ir_io_ = ir_io; }
 #endif
 	void setEndtime(unsigned long cc, unsigned long inc);

@@ -3172,6 +3172,7 @@ static void retro_run_dual(void)
       }
       default:
          /* The other console's buttons for this frame are not here yet. */
+         dual_audio_gap();
          video_cb(NULL, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_PITCH * sizeof(gambatte::video_pixel_t));
          return;
    }
