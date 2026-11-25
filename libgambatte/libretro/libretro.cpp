@@ -3107,8 +3107,15 @@ size_t retro_get_memory_size(unsigned id)
 
 #ifdef HAVE_NETWORK
 /* Cable Link: the sound of the player's Game Boy, as retro_run feeds it. */
+static int16_t dual_last[2];
+
 static void dual_audio(const int16_t *samples, unsigned frames)
 {
+   if (frames)
+   {
+      dual_last[0] = samples[2 * (frames - 1)];
+      dual_last[1] = samples[2 * (frames - 1) + 1];
+   }
    if (use_cc_resampler)
       CC_renderaudio((audio_frame_t*)samples, frames);
    else
@@ -3136,29 +3143,25 @@ static void retro_run_dual(void)
    input_poll_cb();
    update_input_state();
 
-   switch (dual::frame_begin(libretro_input_state))
+   if (dual::frame_begin(libretro_input_state) != dual::FRAME_RUN)
    {
-      case dual::FRAME_RUN:
-         break;
-      case dual::FRAME_HOLD:
+      /* Hold the waveform level while waiting or pacing the consoles. */
+      static int16_t hold[2 * SOUND_SAMPLES_PER_RUN];
+      unsigned left = SOUND_SAMPLES_PER_FRAME;
+      for (unsigned i = 0; i < SOUND_SAMPLES_PER_RUN; i++)
       {
-         /* Ahead of the other console: this frame waits, in silence. */
-         static const int16_t silence[2 * SOUND_SAMPLES_PER_RUN] = { 0 };
-         unsigned left = SOUND_SAMPLES_PER_FRAME;
-         while (left)
-         {
-            const unsigned n = left < SOUND_SAMPLES_PER_RUN ? left : SOUND_SAMPLES_PER_RUN;
-            dual_audio(silence, n);
-            left -= n;
-         }
-         dual_audio_flush();
-         video_cb(NULL, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_PITCH * sizeof(gambatte::video_pixel_t));
-         return;
+         hold[2 * i]     = dual_last[0];
+         hold[2 * i + 1] = dual_last[1];
       }
-      default:
-         /* The other console's buttons for this frame are not here yet. */
-         video_cb(NULL, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_PITCH * sizeof(gambatte::video_pixel_t));
-         return;
+      while (left)
+      {
+         const unsigned n = left < SOUND_SAMPLES_PER_RUN ? left : SOUND_SAMPLES_PER_RUN;
+         dual_audio(hold, n);
+         left -= n;
+      }
+      dual_audio_flush();
+      video_cb(NULL, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_PITCH * sizeof(gambatte::video_pixel_t));
+      return;
    }
 
    dual::run_frame(video_buf, VIDEO_PITCH, dual_audio);

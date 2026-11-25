@@ -137,7 +137,7 @@ public:
 	void setSaveDir(std::string const &dir) { cart_.setSaveDir(dir); }
 	void setInputGetter(InputGetter *getInput) { getInput_ = getInput; }
 #ifdef HAVE_NETWORK
-	void setSerialIO(SerialIO* serial_io) { serial_io_ = serial_io; serialAwait_ = false; }
+	void setSerialIO(SerialIO* serial_io, unsigned long cc);
 #endif
 	void setEndtime(unsigned long cc, unsigned long inc);
 	void setSoundBuffer(uint_least32_t *buf, std::size_t size) { psg_.setBuffer(buf, size); }

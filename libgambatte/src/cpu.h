@@ -67,7 +67,7 @@ public:
 	}
 #ifdef HAVE_NETWORK
 	void setSerialIO(SerialIO *serial_io) {
-		mem_.setSerialIO(serial_io);
+		mem_.setSerialIO(serial_io, cycleCounter_);
 	}
 	void setBlockHook(unsigned short pc, unsigned char ignoringFlag, BlockExchanger *x) {
 		blockHookPc_ = pc;

@@ -68,7 +68,7 @@ static bool force_dmg;
 static void make_lut(void)
 {
    int f = filter_on && core_is_cgb();
-   if (f == lut_filter && !f)
+   if (f == lut_filter)          /* setColorFilter and loadROM invalidate it */
       return;
    for (unsigned c = 0; c < 65536; c++) {
       unsigned long r = (c >> 11) << 3, g = ((c >> 5) & 63) << 2, b = (c & 31) << 3;
@@ -643,10 +643,14 @@ static void *menu_run_thread(void *arg)
    clock_gettime(CLOCK_MONOTONIC, &next);
    while (menu_thread_on) {
       pthread_mutex_lock(&menu_core_mx);
-      if (menu_thread_on && link_peer()) {
-         std::size_t samples = 0;
-         gb->runFor(NULL, 0, NULL, samples);    /* picture and sound dropped */
-         frames++;
+      if (menu_thread_on) {
+         if (link_peer()) {
+            std::size_t samples = 0;
+            gb->runFor(NULL, 0, NULL, samples);    /* picture and sound dropped (it polls the network) */
+            frames++;
+         } else {
+            net_poll();     /* the last guest left: keep accepting while hosting */
+         }
       }
       pthread_mutex_unlock(&menu_core_mx);
       /* one Game Boy frame: 70224 cycles at 4194304 Hz = 16742.7 us */
@@ -705,8 +709,13 @@ void GB::menuRunEnd()
 
 void GB::menuDelay(unsigned ms)
 {
-   if (menu_locked)
+   if (menu_locked) {
+      /* hosting with nobody connected yet: only the game loop polled the
+         network, so with the menu open nobody could find or join the host */
+      if (!menu_thread_on && (net_state() == NET_HOSTING || net_state() == NET_CONNECTING))
+         net_poll();
       menu_thread_start();     /* someone may have joined from the Link menu */
+   }
    if (menu_thread_on) {
       pthread_mutex_unlock(&menu_core_mx);
       usleep((ms ? ms : 1) * 1000);             /* 0 would starve the thread */

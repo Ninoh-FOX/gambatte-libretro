@@ -41,7 +41,8 @@ namespace gambatte
 
    void Rtc::doLatch()
    {
-      uint64_t tmp = ((dataDh_ & 0x40) ? haltTime_ : timeNow()) - baseTime_;
+      const uint64_t now = (dataDh_ & 0x40) ? haltTime_ : timeNow();
+      uint64_t tmp = now >= baseTime_ ? now - baseTime_ : 0;
 
       while (tmp > 0x1FF * 86400)
       {

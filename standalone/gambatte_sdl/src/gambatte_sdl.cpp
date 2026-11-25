@@ -258,7 +258,10 @@ class ResamplerOption : public DescOption {
 public:
 	ResamplerOption()
 	: DescOption("resampler", 0, 1)
-	, resamplerNo_(1)
+	/* 2 = Kaiser50. The core gives 32768 Hz and this goes up to 48000: on
+	   that path 1 (RectSinc, 5 taps) leaves images about 10 dB under the
+	   sound (11-21 kHz, heard as harsh, badly equalized audio). */
+	, resamplerNo_(2)
 	{
 	}
 
