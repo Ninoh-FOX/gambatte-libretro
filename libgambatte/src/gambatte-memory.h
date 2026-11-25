@@ -140,6 +140,7 @@ public:
 	void setSerialIO(SerialIO* serial_io, unsigned long cc);
 #endif
 	void setEndtime(unsigned long cc, unsigned long inc);
+	void discardOutput() { lcd_.discardPixels(); psg_.discardSamples(); }
 	void setSoundBuffer(uint_least32_t *buf, std::size_t size) { psg_.setBuffer(buf, size); }
 	std::size_t fillSoundBuffer(unsigned long cc);
 

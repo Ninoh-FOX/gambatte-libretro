@@ -83,6 +83,9 @@ public:
 	long runFor(gambatte::video_pixel_t *videoBuf, int pitch,
 			gambatte::uint_least32_t *soundBuf, std::size_t soundBufSize, unsigned &samples);
 	
+	// For the private Dual replica, whose audiovisual output is never used.
+	void discardOutput();
+
 	/** Reset to initial state.
 	  * Equivalent to reloading a ROM image, or turning a Game Boy Color off and on again.
 	  */

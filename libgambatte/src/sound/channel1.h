@@ -41,12 +41,15 @@ public:
 	void setSo(unsigned long soMask);
 	bool isActive() const { return master_; }
 	void update(uint_least32_t *buf, unsigned long soBaseVol, unsigned long cycles);
+	void advance(unsigned long soBaseVol, unsigned long cycles);
 	void reset();
 	void init(bool cgb);
 	void saveState(SaveState &state);
 	void loadState(SaveState const &state);
 
 private:
+	template<bool mix>
+	void run(uint_least32_t *buf, unsigned long soBaseVol, unsigned long cycles);
 	class SweepUnit : public SoundUnit {
 	public:
 		SweepUnit(MasterDisabler &disabler, DutyUnit &dutyUnit);

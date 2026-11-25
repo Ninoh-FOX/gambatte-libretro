@@ -260,6 +260,7 @@ namespace M3Start {
 
 namespace M3Loop {
 
+template<bool draw>
 static void doFullTilesUnrolledDmg(PPUPriv &p, int const xend, video_pixel_t *const dbufline,
 		unsigned char const *const tileMapLine, unsigned const tileline, unsigned tileMapXpos) {
 	unsigned const tileIndexSign = ~p.lcdc << 3 & 0x80;
@@ -321,12 +322,13 @@ static void doFullTilesUnrolledDmg(PPUPriv &p, int const xend, video_pixel_t *co
 			p.cycles -= n;
 
 			unsigned ntileword = p.ntileword;
-			video_pixel_t *      dst    = dbufline + xpos - 8;
-			video_pixel_t *const dstend = dst + n;
+			video_pixel_t *dst = draw ? dbufline + xpos - 8 : 0;
+			int tiles = n >> 3;
 			xpos += n;
 
 			if (!lcdcBgEn(p)) {
-				do { *dst++ = p.bgPalette[0]; } while (dst != dstend);
+				if (draw)
+					std::fill_n(dst, n, p.bgPalette[0]);
 				tileMapXpos += n >> 3;
 
 				unsigned const tno = tileMapLine[(tileMapXpos - 1) & 0x1F];
@@ -342,19 +344,19 @@ static void doFullTilesUnrolledDmg(PPUPriv &p, int const xend, video_pixel_t *co
 				 * call site) into two 16-byte memcpys.  The
 				 * expansion is rebuilt by LCD on every BG palette
 				 * write via refreshBgPaletteExpansion(0). */
-				{
+				if (draw) {
 					unsigned const lo = ntileword & 0xFF;
 					unsigned const hi = ntileword >> 8;
 					std::memcpy(&dst[0], p.bgPaletteExpanded[0][lo], 4 * sizeof(video_pixel_t));
 					std::memcpy(&dst[4], p.bgPaletteExpanded[0][hi], 4 * sizeof(video_pixel_t));
+					dst += 8;
 				}
-				dst += 8;
 
 				unsigned const tno = tileMapLine[tileMapXpos & 0x1F];
 				tileMapXpos = (tileMapXpos & 0x1F) + 1;
 				ntileword = expand_lut[(tileDataLine + tno * 16 - (tno & tileIndexSign) * 32)[0]]
 				          + expand_lut[(tileDataLine + tno * 16 - (tno & tileIndexSign) * 32)[1]] * 2;
-			} while (dst != dstend);
+			} while (--tiles);
 
 			p.ntileword = ntileword;
 			continue;
@@ -367,17 +369,19 @@ static void doFullTilesUnrolledDmg(PPUPriv &p, int const xend, video_pixel_t *co
 		}
 
 		{
-			video_pixel_t *const dst = dbufline + (xpos - 8);
+			video_pixel_t *const dst = draw ? dbufline + (xpos - 8) : 0;
 			unsigned const tileword = -(p.lcdc & 1U) & p.ntileword;
 
-			dst[0] = p.bgPalette[ tileword & 0x0003       ];
-			dst[1] = p.bgPalette[(tileword & 0x000C) >>  2];
-			dst[2] = p.bgPalette[(tileword & 0x0030) >>  4];
-			dst[3] = p.bgPalette[(tileword & 0x00C0) >>  6];
-			dst[4] = p.bgPalette[(tileword & 0x0300) >>  8];
-			dst[5] = p.bgPalette[(tileword & 0x0C00) >> 10];
-			dst[6] = p.bgPalette[(tileword & 0x3000) >> 12];
-			dst[7] = p.bgPalette[ tileword           >> 14];
+			if (draw) {
+				dst[0] = p.bgPalette[ tileword & 0x0003       ];
+				dst[1] = p.bgPalette[(tileword & 0x000C) >>  2];
+				dst[2] = p.bgPalette[(tileword & 0x0030) >>  4];
+				dst[3] = p.bgPalette[(tileword & 0x00C0) >>  6];
+				dst[4] = p.bgPalette[(tileword & 0x0300) >>  8];
+				dst[5] = p.bgPalette[(tileword & 0x0C00) >> 10];
+				dst[6] = p.bgPalette[(tileword & 0x3000) >> 12];
+				dst[7] = p.bgPalette[ tileword           >> 14];
+			}
 
 			int i = nextSprite - 1;
 
@@ -397,50 +401,53 @@ static void doFullTilesUnrolledDmg(PPUPriv &p, int const xend, video_pixel_t *co
 					} else
 						n = 8 - pos;
 
-					unsigned const attrib = p.spriteList[i].attrib;
-					unsigned spword       = p.spwordList[i];
-					video_pixel_t const *const spPalette = p.spPalette + (attrib >> 2 & 4);
-					video_pixel_t *d = dst + pos;
+					unsigned spword = p.spwordList[i];
+					if (draw) {
+						unsigned const attrib = p.spriteList[i].attrib;
+						video_pixel_t const *const spPalette = p.spPalette + (attrib >> 2 & 4);
+						video_pixel_t *d = dst + pos;
 
-					if (!(attrib & attr_bgpriority)) {
-						switch (n) {
-						case 8: if (spword >> 14    ) { d[7] = spPalette[spword >> 14    ]; }
-						case 7: if (spword >> 12 & 3) { d[6] = spPalette[spword >> 12 & 3]; }
-						case 6: if (spword >> 10 & 3) { d[5] = spPalette[spword >> 10 & 3]; }
-						case 5: if (spword >>  8 & 3) { d[4] = spPalette[spword >>  8 & 3]; }
-						case 4: if (spword >>  6 & 3) { d[3] = spPalette[spword >>  6 & 3]; }
-						case 3: if (spword >>  4 & 3) { d[2] = spPalette[spword >>  4 & 3]; }
-						case 2: if (spword >>  2 & 3) { d[1] = spPalette[spword >>  2 & 3]; }
-						case 1: if (spword       & 3) { d[0] = spPalette[spword       & 3]; }
-						}
-
-						spword >>= n * 2;
-
-						/*do {
-							if (spword & 3)
-								dst[pos] = spPalette[spword & 3];
-
-							spword >>= 2;
-							++pos;
-						} while (--n);*/
-					} else {
-						unsigned tw = tileword >> pos * 2;
-						d += n;
-						n = -n;
-
-						do
-                  {
-							if (spword & 3)
-                     {
-								d[n] = (tw & 3)
-								     ? p.bgPalette[    tw & 3]
-								     :   spPalette[spword & 3];
+						if (!(attrib & attr_bgpriority)) {
+							switch (n) {
+							case 8: if (spword >> 14    ) { d[7] = spPalette[spword >> 14    ]; }
+							case 7: if (spword >> 12 & 3) { d[6] = spPalette[spword >> 12 & 3]; }
+							case 6: if (spword >> 10 & 3) { d[5] = spPalette[spword >> 10 & 3]; }
+							case 5: if (spword >>  8 & 3) { d[4] = spPalette[spword >>  8 & 3]; }
+							case 4: if (spword >>  6 & 3) { d[3] = spPalette[spword >>  6 & 3]; }
+							case 3: if (spword >>  4 & 3) { d[2] = spPalette[spword >>  4 & 3]; }
+							case 2: if (spword >>  2 & 3) { d[1] = spPalette[spword >>  2 & 3]; }
+							case 1: if (spword       & 3) { d[0] = spPalette[spword       & 3]; }
 							}
 
-							spword >>= 2;
-							tw     >>= 2;
-						} while (++n);
-					}
+							spword >>= n * 2;
+
+							/*do {
+								if (spword & 3)
+									dst[pos] = spPalette[spword & 3];
+
+								spword >>= 2;
+								++pos;
+							} while (--n);*/
+						} else {
+							unsigned tw = tileword >> pos * 2;
+							d += n;
+							n = -n;
+
+							do
+	                  {
+								if (spword & 3)
+	                     {
+									d[n] = (tw & 3)
+									     ? p.bgPalette[    tw & 3]
+									     :   spPalette[spword & 3];
+								}
+
+								spword >>= 2;
+								tw     >>= 2;
+							} while (++n);
+						}
+					} else
+						spword >>= n * 2;
 
 					p.spwordList[i] = spword;
 					--i;
@@ -459,6 +466,7 @@ static void doFullTilesUnrolledDmg(PPUPriv &p, int const xend, video_pixel_t *co
 	p.xpos = xpos;
 }
 
+template<bool draw>
 static void doFullTilesUnrolledCgb(PPUPriv &p, int const xend, video_pixel_t *const dbufline,
 		unsigned char const *const tileMapLine, unsigned const tileline, unsigned tileMapXpos) {
 	int xpos = p.xpos;
@@ -511,8 +519,8 @@ static void doFullTilesUnrolledCgb(PPUPriv &p, int const xend, video_pixel_t *co
 
 			unsigned ntileword = p.ntileword;
 			unsigned nattrib   = p.nattrib;
-			video_pixel_t *      dst    = dbufline + xpos - 8;
-			video_pixel_t *const dstend = dst + n;
+			video_pixel_t *dst = draw ? dbufline + xpos - 8 : 0;
+			int tiles = n >> 3;
 			xpos += n;
 
 			do {
@@ -523,13 +531,13 @@ static void doFullTilesUnrolledCgb(PPUPriv &p, int const xend, video_pixel_t *co
 				 * palettes, so the hot working set stays well
 				 * inside L1 even though the full table is 32 KiB
 				 * (u32 build). */
-				{
+				if (draw) {
 					unsigned const lo = ntileword & 0xFF;
 					unsigned const hi = ntileword >> 8;
 					std::memcpy(&dst[0], p.bgPaletteExpanded[nattrib & 7][lo], 4 * sizeof(video_pixel_t));
 					std::memcpy(&dst[4], p.bgPaletteExpanded[nattrib & 7][hi], 4 * sizeof(video_pixel_t));
+					dst += 8;
 				}
-				dst += 8;
 
 				unsigned const tno = tileMapLine[ tileMapXpos & 0x1F          ];
 				nattrib            = tileMapLine[(tileMapXpos & 0x1F) + 0x2000];
@@ -541,7 +549,7 @@ static void doFullTilesUnrolledCgb(PPUPriv &p, int const xend, video_pixel_t *co
 				                                     + (nattrib << 10 & 0x2000);
 				unsigned short const *const explut = expand_lut + (nattrib << 3 & 0x100);
 				ntileword = explut[td[0]] + explut[td[1]] * 2;
-			} while (dst != dstend);
+			} while (--tiles);
 
 			p.ntileword = ntileword;
 			p.nattrib   = nattrib;
@@ -556,19 +564,21 @@ static void doFullTilesUnrolledCgb(PPUPriv &p, int const xend, video_pixel_t *co
 		}
 
 		{
-			video_pixel_t *const dst = dbufline + (xpos - 8);
+			video_pixel_t *const dst = draw ? dbufline + (xpos - 8) : 0;
 			unsigned const tileword = p.ntileword;
 			unsigned const attrib   = p.nattrib;
 			video_pixel_t const *const bgPalette = p.bgPalette + (attrib & 7) * 4;
 
-			dst[0] = bgPalette[ tileword & 0x0003       ];
-			dst[1] = bgPalette[(tileword & 0x000C) >>  2];
-			dst[2] = bgPalette[(tileword & 0x0030) >>  4];
-			dst[3] = bgPalette[(tileword & 0x00C0) >>  6];
-			dst[4] = bgPalette[(tileword & 0x0300) >>  8];
-			dst[5] = bgPalette[(tileword & 0x0C00) >> 10];
-			dst[6] = bgPalette[(tileword & 0x3000) >> 12];
-			dst[7] = bgPalette[ tileword           >> 14];
+			if (draw) {
+				dst[0] = bgPalette[ tileword & 0x0003       ];
+				dst[1] = bgPalette[(tileword & 0x000C) >>  2];
+				dst[2] = bgPalette[(tileword & 0x0030) >>  4];
+				dst[3] = bgPalette[(tileword & 0x00C0) >>  6];
+				dst[4] = bgPalette[(tileword & 0x0300) >>  8];
+				dst[5] = bgPalette[(tileword & 0x0C00) >> 10];
+				dst[6] = bgPalette[(tileword & 0x3000) >> 12];
+				dst[7] = bgPalette[ tileword           >> 14];
+			}
 
 			int i = nextSprite - 1;
 
@@ -592,81 +602,84 @@ static void doFullTilesUnrolledCgb(PPUPriv &p, int const xend, video_pixel_t *co
 					} else
 						n = 8 - pos;
 
-					unsigned char const id = p.spriteList[i].oampos;
-					unsigned const sattrib = p.spriteList[i].attrib;
-					unsigned spword        = p.spwordList[i];
-               video_pixel_t const * spPalette;
-               if(p.dmgMode)//support gb games in gbc mode
-                  spPalette = p.spPalette + (sattrib >> 2 & 4);
-               else
-                  spPalette = p.spPalette + (sattrib & 7) * 4;
+					unsigned spword = p.spwordList[i];
+					if (draw) {
+						unsigned char const id = p.spriteList[i].oampos;
+						unsigned const sattrib = p.spriteList[i].attrib;
+	               video_pixel_t const * spPalette;
+	               if(p.dmgMode)//support gb games in gbc mode
+	                  spPalette = p.spPalette + (sattrib >> 2 & 4);
+	               else
+	                  spPalette = p.spPalette + (sattrib & 7) * 4;
 
-					if (!((attrib | sattrib) & bgprioritymask)) {
-						unsigned char  *const idt = idtab + pos;
-						video_pixel_t *const   d =   dst + pos;
+						if (!((attrib | sattrib) & bgprioritymask)) {
+							unsigned char  *const idt = idtab + pos;
+							video_pixel_t *const   d =   dst + pos;
 
-						switch (n) {
-						case 8: if ((spword >> 14    ) && id < idt[7]) {
-						        	idt[7] = id;
-						        	  d[7] = spPalette[spword >> 14    ];
-						        }
-						case 7: if ((spword >> 12 & 3) && id < idt[6]) {
-						        	idt[6] = id;
-						        	  d[6] = spPalette[spword >> 12 & 3];
-						        }
-						case 6: if ((spword >> 10 & 3) && id < idt[5]) {
-						        	idt[5] = id;
-						        	  d[5] = spPalette[spword >> 10 & 3];
-						        }
-						case 5: if ((spword >>  8 & 3) && id < idt[4]) {
-						        	idt[4] = id;
-						        	  d[4] = spPalette[spword >>  8 & 3];
-						        }
-						case 4: if ((spword >>  6 & 3) && id < idt[3]) {
-						        	idt[3] = id;
-						        	  d[3] = spPalette[spword >>  6 & 3];
-						        }
-						case 3: if ((spword >>  4 & 3) && id < idt[2]) {
-						        	idt[2] = id;
-						        	  d[2] = spPalette[spword >>  4 & 3];
-						        }
-						case 2: if ((spword >>  2 & 3) && id < idt[1]) {
-						        	idt[1] = id;
-						        	  d[1] = spPalette[spword >>  2 & 3];
-						        }
-						case 1: if ((spword       & 3) && id < idt[0]) {
-						        	idt[0] = id;
-						        	  d[0] = spPalette[spword       & 3];
-						        }
+							switch (n) {
+							case 8: if ((spword >> 14    ) && id < idt[7]) {
+							        	idt[7] = id;
+							        	  d[7] = spPalette[spword >> 14    ];
+							        }
+							case 7: if ((spword >> 12 & 3) && id < idt[6]) {
+							        	idt[6] = id;
+							        	  d[6] = spPalette[spword >> 12 & 3];
+							        }
+							case 6: if ((spword >> 10 & 3) && id < idt[5]) {
+							        	idt[5] = id;
+							        	  d[5] = spPalette[spword >> 10 & 3];
+							        }
+							case 5: if ((spword >>  8 & 3) && id < idt[4]) {
+							        	idt[4] = id;
+							        	  d[4] = spPalette[spword >>  8 & 3];
+							        }
+							case 4: if ((spword >>  6 & 3) && id < idt[3]) {
+							        	idt[3] = id;
+							        	  d[3] = spPalette[spword >>  6 & 3];
+							        }
+							case 3: if ((spword >>  4 & 3) && id < idt[2]) {
+							        	idt[2] = id;
+							        	  d[2] = spPalette[spword >>  4 & 3];
+							        }
+							case 2: if ((spword >>  2 & 3) && id < idt[1]) {
+							        	idt[1] = id;
+							        	  d[1] = spPalette[spword >>  2 & 3];
+							        }
+							case 1: if ((spword       & 3) && id < idt[0]) {
+							        	idt[0] = id;
+							        	  d[0] = spPalette[spword       & 3];
+							        }
+							}
+
+							spword >>= n * 2;
+
+							/*do {
+								if ((spword & 3) && id < idtab[pos]) {
+									idtab[pos] = id;
+										dst[pos] = spPalette[spword & 3];
+								}
+
+								spword >>= 2;
+								++pos;
+							} while (--n);*/
+						} else {
+							unsigned tw = tileword >> pos * 2;
+
+							do {
+								if ((spword & 3) && id < idtab[pos]) {
+									idtab[pos] = id;
+									  dst[pos] = (tw & 3)
+									           ? bgPalette[    tw & 3]
+									           : spPalette[spword & 3];
+								}
+
+								spword >>= 2;
+								tw     >>= 2;
+								++pos;
+							} while (--n);
 						}
-
+					} else
 						spword >>= n * 2;
-
-						/*do {
-							if ((spword & 3) && id < idtab[pos]) {
-								idtab[pos] = id;
-									dst[pos] = spPalette[spword & 3];
-							}
-
-							spword >>= 2;
-							++pos;
-						} while (--n);*/
-					} else {
-						unsigned tw = tileword >> pos * 2;
-
-						do {
-							if ((spword & 3) && id < idtab[pos]) {
-								idtab[pos] = id;
-								  dst[pos] = (tw & 3)
-								           ? bgPalette[    tw & 3]
-								           : spPalette[spword & 3];
-							}
-
-							spword >>= 2;
-							tw     >>= 2;
-							++pos;
-						} while (--n);
-					}
 
 					p.spwordList[i] = spword;
 					--i;
@@ -694,6 +707,7 @@ static void doFullTilesUnrolledCgb(PPUPriv &p, int const xend, video_pixel_t *co
 	p.xpos = xpos;
 }
 
+template<bool draw>
 static void doFullTilesUnrolled(PPUPriv &p) {
 	int xpos = p.xpos;
 	int const xend = static_cast<int>(p.wx) < xpos || p.wx >= 168
@@ -723,17 +737,18 @@ static void doFullTilesUnrolled(PPUPriv &p) {
 		video_pixel_t prebuf[16];
 
 		if (p.cgb) {
-			doFullTilesUnrolledCgb(p, xend < 8 ? xend : 8, prebuf + (8 - xpos),
+			doFullTilesUnrolledCgb<draw>(p, xend < 8 ? xend : 8, draw ? prebuf + (8 - xpos) : 0,
 			                       tileMapLine, tileline, tileMapXpos);
 		} else {
-			doFullTilesUnrolledDmg(p, xend < 8 ? xend : 8, prebuf + (8 - xpos),
+			doFullTilesUnrolledDmg<draw>(p, xend < 8 ? xend : 8, draw ? prebuf + (8 - xpos) : 0,
 			                       tileMapLine, tileline, tileMapXpos);
 		}
 
 		int const newxpos = p.xpos;
 
 		if (newxpos > 8) {
-			std::memcpy(dbufline, prebuf + (8 - xpos), (newxpos - 8) * sizeof *dbufline);
+			if (draw)
+				std::memcpy(dbufline, draw ? prebuf + (8 - xpos) : 0, (newxpos - 8) * sizeof *dbufline);
 		} else if (newxpos < 8)
 			return;
 
@@ -744,9 +759,16 @@ static void doFullTilesUnrolled(PPUPriv &p) {
 	}
 
 	if (p.cgb) {
-		doFullTilesUnrolledCgb(p, xend, dbufline, tileMapLine, tileline, tileMapXpos);
+		doFullTilesUnrolledCgb<draw>(p, xend, dbufline, tileMapLine, tileline, tileMapXpos);
 	} else
-		doFullTilesUnrolledDmg(p, xend, dbufline, tileMapLine, tileline, tileMapXpos);
+		doFullTilesUnrolledDmg<draw>(p, xend, dbufline, tileMapLine, tileline, tileMapXpos);
+}
+
+static void doFullTilesUnrolled(PPUPriv &p) {
+	if (p.framebuf.discard())
+		doFullTilesUnrolled<false>(p);
+	else
+		doFullTilesUnrolled<true>(p);
 }
 
 static void plotPixel(PPUPriv &p) {
@@ -762,6 +784,16 @@ static void plotPixel(PPUPriv &p) {
 			++p.winYPos;
 		} else if (!p.cgb && (p.winDrawState == 0 || xpos == 166))
 			p.winDrawState |= win_draw_start;
+	}
+
+	if (p.framebuf.discard()) {
+		for (int i = static_cast<int>(p.nextSprite) - 1;
+		     i >= 0 && int(p.spriteList[i].spx) > xpos - 8; --i)
+			p.spwordList[i] >>= 2;
+
+		p.xpos = xpos + 1;
+		p.tileword = tileword >> 2;
+		return;
 	}
 
 	unsigned const twdata = tileword & ((p.lcdc & 1) | p.cgb) * 3;

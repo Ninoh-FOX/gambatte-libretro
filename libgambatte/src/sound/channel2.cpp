@@ -113,7 +113,16 @@ void Channel2::loadState(SaveState const &state) {
 	master_ = state.spu.ch2.master;
 }
 
-void Channel2::update(uint_least32_t *buf, unsigned long const soBaseVol, unsigned long cycles) {
+void Channel2::update(uint_least32_t *buf, unsigned long soBaseVol, unsigned long cycles) {
+	run<true>(buf, soBaseVol, cycles);
+}
+
+void Channel2::advance(unsigned long soBaseVol, unsigned long cycles) {
+	run<false>(0, soBaseVol, cycles);
+}
+
+template<bool mix>
+void Channel2::run(uint_least32_t *buf, unsigned long const soBaseVol, unsigned long cycles) {
 	unsigned long const outBase = envelopeUnit_.dacIsOn() ? soBaseVol & soMask_ : 0;
 	unsigned long const outLow = outBase * (0 - 15ul);
 	unsigned long const endCycles = cycleCounter_ + cycles;
@@ -126,9 +135,11 @@ void Channel2::update(uint_least32_t *buf, unsigned long const soBaseVol, unsign
 		unsigned long out = dutyUnit_.isHighState() ? outHigh : outLow;
 
 		while (dutyUnit_.counter() <= nextMajorEvent) {
-			*buf += out - prevOut_;
+			if (mix)
+				*buf += out - prevOut_;
 			prevOut_ = out;
-			buf += dutyUnit_.counter() - cycleCounter_;
+			if (mix)
+				buf += dutyUnit_.counter() - cycleCounter_;
 			cycleCounter_ = dutyUnit_.counter();
 
 			dutyUnit_.event();
@@ -136,9 +147,11 @@ void Channel2::update(uint_least32_t *buf, unsigned long const soBaseVol, unsign
 		}
 
 		if (cycleCounter_ < nextMajorEvent) {
-			*buf += out - prevOut_;
+			if (mix)
+				*buf += out - prevOut_;
 			prevOut_ = out;
-			buf += nextMajorEvent - cycleCounter_;
+			if (mix)
+				buf += nextMajorEvent - cycleCounter_;
 			cycleCounter_ = nextMajorEvent;
 		}
 

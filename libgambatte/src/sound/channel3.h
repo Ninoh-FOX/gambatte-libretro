@@ -43,6 +43,7 @@ public:
 	void setNr4(unsigned data);
 	void setSo(unsigned long soMask);
 	void update(uint_least32_t *buf, unsigned long soBaseVol, unsigned long cycles);
+	void advance(unsigned long soBaseVol, unsigned long cycles);
 
 	unsigned waveRamRead(unsigned index) const {
 		if (master_) {
@@ -67,6 +68,8 @@ public:
 	}
 
 private:
+	template<bool mix>
+	void run(uint_least32_t *buf, unsigned long soBaseVol, unsigned long cycles);
 	class Ch3MasterDisabler : public MasterDisabler {
 	public:
 		Ch3MasterDisabler(bool &m, unsigned long &wC) : MasterDisabler(m), waveCounter_(wC) {}
