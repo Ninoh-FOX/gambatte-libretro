@@ -51,6 +51,7 @@ namespace gambatte
       ,  soVol_(0)
       ,  rsum_(0x8000) // initialize to 0x8000 to prevent borrows from high word, xor away later
       ,  enabled_(false)
+      ,  discard_(false)
    {
    }
 
@@ -96,6 +97,15 @@ namespace gambatte
 
    void PSG::accumulateChannels(const unsigned long cycles)
    {
+      if (discard_)
+      {
+         ch1_.advance(soVol_, cycles);
+         ch2_.advance(soVol_, cycles);
+         ch3_.advance(soVol_, cycles);
+         ch4_.advance(soVol_, cycles);
+         return;
+      }
+
       uint_least32_t *const buf = buffer_ + bufferPos_;
       std::memset(buf, 0, cycles * sizeof(uint_least32_t));
       ch1_.update(buf, soVol_, cycles);
@@ -127,6 +137,10 @@ namespace gambatte
 
    size_t PSG::fillBuffer()
    {
+      // The delta mixer carry is output-only and this replica never plays PCM.
+      if (discard_)
+         return bufferPos_;
+
       uint_least32_t sum = rsum_;
       uint_least32_t *b = buffer_;
       unsigned n = bufferPos_;

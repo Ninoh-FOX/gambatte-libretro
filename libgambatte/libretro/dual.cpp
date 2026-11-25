@@ -6,13 +6,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <new>
+#include <ctype.h>
+#include <streams/file_stream.h>
+#if defined(__linux__) || defined(__APPLE__) || defined(__unix__)
+#include <dirent.h>
+#include <sys/stat.h>
+#define DUAL_HAVE_DIRS
+#endif
 
 namespace dual {
 
 /* ---- protocol ------------------------------------------------------------ */
 
 #define DUAL_HEADER        0x47424431   /* GBD1 (Game Boy, Dual) */
-#define DUAL_VERSION       1
+#define DUAL_VERSION       2
+#define DUAL_NAME_MAX      256
+#define DUAL_ROM_MAX       (8 * 1024 * 1024)
+#define DUAL_START_OTHER   2
 
 /* Packets: header, type | sender's slot << 8 (FF: none yet), words, data. */
 #define DPK_HELLO          1   /* version, rom, settings, host */
@@ -26,7 +37,8 @@ namespace dual {
 #define DPK_BYE            8
 #define DPK_START          10  /* client id of each slot */
 #define DPK_GO             11  /* the states can go */
-#define DPK_GIVEUP         12  /* games or settings differ */
+#define DPK_GIVEUP         12  /* reason (optional for v1) */
+#define DPK_ROMOK          13  /* the remote cartridge is loaded */
 /* The real time cable (different games): */
 #define DPK_XFER           20  /* transfer number, byte, fast (CGB), frame */
 #define DPK_REPLY          21  /* transfer number, byte, frame */
@@ -95,7 +107,7 @@ namespace dual {
 #define RT_FRESH_US        100000
 #define RT_HELD_MAX        8   /* Its transfers waiting for our game */
 
-enum { DS_OFF = 0, DS_HELLO, DS_WAIT, DS_PING, DS_TRANSFER, DS_READY, DS_RUN };
+enum { DS_OFF = 0, DS_HELLO, DS_WAIT, DS_ROMS, DS_PING, DS_TRANSFER, DS_READY, DS_RUN };
 
 typedef uint8_t u8;
 typedef uint32_t u32;
@@ -446,18 +458,30 @@ public:
    }
 };
 
+enum { DUAL_WHY_NOROM = 2, DUAL_WHY_MEMORY, DUAL_WHY_OTHER, DUAL_WHY_DIFFER };
+
+struct RomId {
+   u32 hash, size, header, flags;
+   char name[DUAL_NAME_MAX];
+};
+
 static struct {
    /* The game */
    gambatte::GB *local;
    const u8 *rom;               /* (our copy) */
    size_t rom_size;
    unsigned flags;
-   u32 rom_crc;
+   u32 rom_crc, rom_header;
+   char rom_path[1024], system_path[1024];
+   RomId remote;
+   int hello_id;
+   bool other, search_other, roms_done, roms_ok;
+   u32 rt_reason;
    u32 cfg;
 
    /* The other player's Game Boy, and the cable */
    gambatte::GB *peer;
-   bool peer_loaded;
+   bool peer_loaded, peer_other;
    Keys keys_in[NP];
    CableEnd end[NP];
    IrEnd ir[NP];
@@ -566,7 +590,7 @@ static void dual_send(unsigned to, u32 type, const u32 *words, u32 nwords,
    u32 *w = (u32*)buf;
    u32 i;
    w[0] = be32(DUAL_HEADER);
-   w[1] = be32(type | ((ds.state >= DS_PING ? ds.my_slot : NO_SLOT) << 8));
+   w[1] = be32(type | ((ds.state >= DS_ROMS ? ds.my_slot : NO_SLOT) << 8));
    for (i = 0; i < nwords; i++)
       w[2 + i] = be32(words[i]);
    if (len)
@@ -837,39 +861,96 @@ static void dual_stop(const char *why) {
       }
       ds.loaded = false;
    }
+   if (ds.peer_other) {
+      delete ds.peer;
+      ds.peer = NULL;
+      ds.peer_loaded = ds.peer_other = false;
+   }
+
+}
+
+static const char *why_message(u32 why) {
+   switch (why) {
+   case DUAL_WHY_NOROM:  return "Cable Link: a console does not have the other game, using the real time cable";
+   case DUAL_WHY_MEMORY: return "Cable Link: not enough memory for the other game, using the real time cable";
+   case DUAL_WHY_OTHER:  return "Cable Link: different games, using the real time cable";
+   default:              return MSG_DIFFER;
+   }
+}
+
+static void fallback(unsigned peer, u32 why, bool notify) {
+   u32 w[1] = { why };
+   if (notify)
+      dual_send(peer, DPK_GIVEUP, w, 1, NULL, 0);
+   dual_stop(NULL);
+   ds.gave_up = true;
+   ds.rt_reason = why;
+   rt_start(peer);
+   dual_msg(why_message(why));
 }
 
 static void give_up(const char *why) {
-   const bool differ = why && !strcmp(why, MSG_DIFFER);
-   if (ds.is_host) {
-      if (ds.cand >= 0)
-         dual_send(ds.cand, DPK_GIVEUP, NULL, 0, NULL, 0);
+   if (why && !strcmp(why, MSG_DIFFER)) {
+      fallback(ds.is_host ? (unsigned)ds.cand : 0, DUAL_WHY_DIFFER, true);
+      return;
    }
-   else if (ds.state == DS_HELLO || ds.state == DS_WAIT)
-      dual_send(0, differ ? DPK_GIVEUP : DPK_BYE, NULL, 0, NULL, 0);
+   if (ds.is_host && ds.cand >= 0)
+      dual_send(ds.cand, DPK_GIVEUP, NULL, 0, NULL, 0);
+   else if (!ds.is_host && (ds.state == DS_HELLO || ds.state == DS_WAIT))
+      dual_send(0, DPK_BYE, NULL, 0, NULL, 0);
    dual_stop(NULL);
    ds.gave_up = true;
-   /* Both consoles have this core, with other games: the real time cable. */
-   if (differ)
-      rt_start(ds.is_host ? (unsigned)ds.cand : 0);
    if (why)
       dual_msg(why);
 }
 
+static u32 cart_header(const u8 *rom) {
+   /* Title, CGB/game code, maker, type, ROM/RAM size and checksums. */
+   return fnv(2166136261u, rom + 0x134, 0x1c);
+}
+
+static const char *base_name(const char *path) {
+   const char *slash = strrchr(path, '/'), *back = strrchr(path, '\\');
+   if (back && (!slash || back > slash))
+      slash = back;
+   return slash ? slash + 1 : path;
+}
+
 static void send_hello(unsigned to) {
-   u32 w[4];
-   w[0] = DUAL_VERSION;
-   w[1] = ds.rom_crc;
-   w[2] = ds.cfg;
-   w[3] = ds.is_host ? 1 : 0;
-   dual_send(to, DPK_HELLO, w, 4, NULL, 0);
+   u32 w[7] = { DUAL_VERSION, ds.rom_crc, ds.cfg, ds.is_host ? 1u : 0u,
+                (u32)ds.rom_size, ds.rom_header, ds.flags };
+   const char *name = base_name(ds.rom_path);
+   const size_t len = strlen(name);
+   dual_send(to, DPK_HELLO, w, 7, name, len < DUAL_NAME_MAX ? len : 0);
    ds.hello_sent = true;
    ds.t_hello = fe.time_usec();
 }
 
-static bool hello_matches(const u32 *w) {
-   return w[0] == DUAL_VERSION && w[1] == ds.rom_crc && w[2] == ds.cfg &&
-          w[3] == (ds.is_host ? 0u : 1u);
+static bool same_rom(const RomId &id) {
+   return id.hash == ds.rom_crc && id.size == ds.rom_size &&
+          id.header == ds.rom_header;
+}
+
+static bool read_hello(RomId &id, const u32 *p, size_t len) {
+   if (len < 36 || be32(p[2]) != DUAL_VERSION ||
+       be32(p[5]) != (ds.is_host ? 0u : 1u))
+      return false;
+   id.hash = be32(p[3]);
+   id.size = be32(p[6]);
+   id.header = be32(p[7]);
+   id.flags = be32(p[8]);
+   const u32 cfg = (2166136261u ^ id.flags) * 16777619u;
+   if (id.size < 0x150 || id.flags & ~15u || cfg != be32(p[4]))
+      return false;
+   if (same_rom(id) && cfg != ds.cfg)
+      return false;
+   const size_t name_len = len - 36;
+   memset(id.name, 0, sizeof(id.name));
+   if (name_len < sizeof(id.name))
+      memcpy(id.name, p + 9, name_len);
+   if (strpbrk(id.name, "/\\:") || !strcmp(id.name, ".") || !strcmp(id.name, ".."))
+      id.name[0] = 0;
+   return true;
 }
 
 static void send_ping(void) {
@@ -887,12 +968,216 @@ static u32 rtt_min(void) {
    return ds.rtt_n ? m : 0;
 }
 
+/* Check the header before reading the rest of any candidate. Only a full
+ * match can be loaded; names are hints and never paths from the network. */
+static u32 load_candidate(const char *path) {
+   RFILE *file = filestream_open(path, RETRO_VFS_FILE_ACCESS_READ,
+                                RETRO_VFS_FILE_ACCESS_HINT_NONE);
+   if (!file)
+      return DUAL_WHY_NOROM;
+   u8 head[0x150];
+   const RomId &id = ds.remote;
+   u32 why = DUAL_WHY_NOROM;
+   if (filestream_get_size(file) == id.size &&
+       filestream_read(file, head, sizeof(head)) == sizeof(head) &&
+       cart_header(head) == id.header) {
+      u8 *rom = (u8*)malloc(id.size);
+      if (!rom)
+         why = DUAL_WHY_MEMORY;
+      else {
+         memcpy(rom, head, sizeof(head));
+         const size_t rest = id.size - sizeof(head);
+         if (filestream_read(file, rom + sizeof(head), rest) == (int64_t)rest &&
+             fnv(2166136261u ^ id.size, rom, id.size) == id.hash) {
+            /* GB::load keeps its own copy; the temporary buffer goes away. */
+            if (!ds.peer)
+               ds.peer = new (std::nothrow) gambatte::GB();
+            if (!ds.peer)
+               why = DUAL_WHY_MEMORY;
+            else {
+               ds.peer->discardOutput();
+               ds.peer->setBootloaderGetter(NULL);
+               ds.peer_loaded = ds.peer->load(rom, id.size, id.flags) == 0;
+               why = ds.peer_loaded ? 0 : DUAL_WHY_DIFFER;
+            }
+         }
+         free(rom);
+      }
+   }
+   filestream_close(file);
+   return why;
+}
+
+static bool room_for_rom(u32 size) {
+#ifdef __linux__
+   FILE *f = fopen("/proc/meminfo", "r");
+   if (f) {
+      char line[128];
+      unsigned long kb;
+      while (fgets(line, sizeof(line), f)) {
+         if (sscanf(line, "MemAvailable: %lu kB", &kb) == 1) {
+            fclose(f);
+            return (u64)kb * 1024 >= (u64)size * 2 + 4 * 1024 * 1024;
+         }
+      }
+      fclose(f);
+   }
+#endif
+   return true;
+}
+
+#ifdef DUAL_HAVE_DIRS
+static unsigned name_alike(const char *a, const char *b) {
+   unsigned n = 0;
+   while (a[n] && b[n] && tolower((unsigned char)a[n]) == tolower((unsigned char)b[n]))
+      n++;
+   return n;
+}
+
+static bool rom_extension(const char *name) {
+   const char *ext = strrchr(name, '.');
+   return ext && (!strcasecmp(ext, ".gb") || !strcasecmp(ext, ".gbc") ||
+                  !strcasecmp(ext, ".sgb") || !strcasecmp(ext, ".bin"));
+}
+
+static u32 scan_roms(const char *folder, char *path, size_t capacity) {
+   const char *own = base_name(ds.rom_path);
+   const u64 start = fe.time_usec();
+   DIR *dir = opendir(*folder ? folder : ".");
+   if (!dir)
+      return DUAL_WHY_NOROM;
+   char best[16][DUAL_NAME_MAX];
+   unsigned score[16], count = 0;
+   struct dirent *entry;
+   while ((entry = readdir(dir))) {
+      const char *name = entry->d_name;
+      if (!rom_extension(name) || strlen(name) >= sizeof(best[0]) ||
+          !strcmp(name, own) || !strcmp(name, ds.remote.name))
+         continue;
+      const unsigned a = name_alike(name, ds.remote.name);
+      const unsigned b = name_alike(name, own);
+      const unsigned rank = a > b ? a : b;
+      unsigned pos = count;
+      while (pos && score[pos - 1] < rank)
+         pos--;
+      if (pos == 16)
+         continue;
+      if (count < 16)
+         count++;
+      for (unsigned j = count - 1; j > pos; j--) {
+         strcpy(best[j], best[j - 1]);
+         score[j] = score[j - 1];
+      }
+      strcpy(best[pos], name);
+      score[pos] = rank;
+   }
+   rewinddir(dir);
+   u32 why = DUAL_WHY_NOROM;
+   unsigned i = 0;
+   while (why == DUAL_WHY_NOROM) {
+      const char *name;
+      if (i < count)
+         name = best[i++];
+      else {
+         if (fe.time_usec() - start > 500000 || !(entry = readdir(dir)))
+            break;
+         name = entry->d_name;
+         if (!rom_extension(name) || !strcmp(name, own) || !strcmp(name, ds.remote.name))
+            continue;
+         unsigned k = 0;
+         while (k < count && strcmp(name, best[k]))
+            k++;
+         if (k < count)
+            continue;
+      }
+      const int len = snprintf(path, capacity, "%s%s", folder, name);
+      struct stat st;
+      if (len > 0 && (size_t)len < capacity && !stat(path, &st) &&
+          S_ISREG(st.st_mode) && (u64)st.st_size == ds.remote.size)
+         why = load_candidate(path);
+   }
+   closedir(dir);
+   return why;
+}
+#endif
+
+/* Remember files already found, just as gpSP does. Only verified local paths
+ * are written to the index, and each reuse still verifies the full ROM. */
+static u32 indexed_rom(char *path, size_t capacity, bool remember) {
+   if (!ds.system_path[0])
+      return DUAL_WHY_NOROM;
+   char index[1100];
+   snprintf(index, sizeof(index), "%s/gambatte_plus_roms.txt", ds.system_path);
+   if (remember) {
+      if (strpbrk(path, "\r\n"))
+         return DUAL_WHY_NOROM;
+      FILE *f = fopen(index, "a");
+      if (f) {
+         fprintf(f, "%08x %08x %08x %s\n", ds.remote.hash, ds.remote.size,
+                 ds.remote.header, path);
+         fclose(f);
+      }
+      return 0;
+   }
+   FILE *f = fopen(index, "r");
+   if (!f)
+      return DUAL_WHY_NOROM;
+   char line[1200];
+   path[0] = 0;
+   while (fgets(line, sizeof(line), f)) {
+      unsigned hash, size, header;
+      int at = 0;
+      line[strcspn(line, "\r\n")] = 0;
+      if (sscanf(line, "%x %x %x %n", &hash, &size, &header, &at) == 3 && at &&
+          hash == ds.remote.hash && size == ds.remote.size &&
+          header == ds.remote.header && strlen(line + at) < capacity)
+         strcpy(path, line + at);
+   }
+   fclose(f);
+   return *path ? load_candidate(path) : (u32)DUAL_WHY_NOROM;
+}
+
+static u32 prepare_other(void) {
+   if (ds.remote.size > DUAL_ROM_MAX || !room_for_rom(ds.remote.size))
+      return DUAL_WHY_MEMORY;
+   /* Drop a cached same-game replica before allocating the other cartridge. */
+   delete ds.peer;
+   ds.peer = NULL;
+   ds.peer_loaded = false;
+   ds.peer_other = true;
+   char path[1024], folder[1024];
+   u32 why = indexed_rom(path, sizeof(path), false);
+   if (why != DUAL_WHY_NOROM)
+      return why;
+   if (!ds.rom_path[0])
+      return DUAL_WHY_NOROM;
+   const size_t n = base_name(ds.rom_path) - ds.rom_path;
+   memcpy(folder, ds.rom_path, n);
+   folder[n] = 0;
+   if (ds.remote.name[0]) {
+      const int len = snprintf(path, sizeof(path), "%s%s", folder, ds.remote.name);
+      if (len > 0 && (size_t)len < sizeof(path))
+         why = load_candidate(path);
+   }
+#ifdef DUAL_HAVE_DIRS
+   if (why == DUAL_WHY_NOROM)
+      why = scan_roms(folder, path, sizeof(path));
+#endif
+   if (!why && n)
+      indexed_rom(path, sizeof(path), true);
+   return why;
+}
+
 /* The other player's Game Boy, with this very game. */
 static bool load_peer(void) {
    if (ds.peer_loaded)
       return true;
-   if (!ds.peer)
-      ds.peer = new gambatte::GB();
+   if (!ds.peer) {
+      ds.peer = new (std::nothrow) gambatte::GB();
+      if (!ds.peer)
+         return false;
+      ds.peer->discardOutput();
+   }
    ds.peer->setBootloaderGetter(NULL);   /* It never runs one (see reset_all) */
    if (ds.peer->load(ds.rom, ds.rom_size, ds.flags) != 0)
       return false;
@@ -941,11 +1226,12 @@ static bool load_machines(void) {
       return false;
    if (!ds.local->loadState(ds.own_blob, ds.blob_size))
       return false;
-   blob = (u8*)malloc(ds.blob_size);
+   const size_t peer_size = ds.peer->stateSize();
+   blob = (u8*)malloc(peer_size);
    if (!blob)
       return false;
-   if (!rle_unpack(blob, ds.blob_size, ds.peer_pack, ds.peer_pack_len) ||
-       !ds.peer->loadState(blob, ds.blob_size)) {
+   if (!rle_unpack(blob, peer_size, ds.peer_pack, ds.peer_pack_len) ||
+       !ds.peer->loadState(blob, peer_size)) {
       free(blob);
       return false;
    }
@@ -974,7 +1260,8 @@ static void session_reset(void) {
    const u64 now = fe.time_usec();
    free_blobs();
    ds.gave_up = false;
-   ds.cand = -1;
+   ds.cand = ds.hello_id = -1;
+   ds.other = ds.roms_done = ds.roms_ok = false;
    ds.cand_hello = false;
    ds.early_hello = ds.early_differ = 0;
    ds.hello_sent = ds.go = ds.peer_ready = false;
@@ -1038,16 +1325,23 @@ static void begin_transfer(void) {
 }
 
 static void host_start(void) {
-   u32 w[NP];
+   u32 w[NP + 1];
+   ds.other = !same_rom(ds.remote);
+   if (ds.other && !ds.search_other) {
+      fallback((unsigned)ds.cand, DUAL_WHY_OTHER, true);
+      return;
+   }
    ds.my_slot = 0;
    ds.slot_id[0] = 0;
    ds.slot_id[1] = ds.cand;
    w[0] = 0;
    w[1] = (u32)ds.cand;
-   ds.state = DS_PING;
+   w[2] = ds.other ? DUAL_START_OTHER : 0;
+   ds.state = ds.other ? DS_ROMS : DS_PING;
    ds.t_state = fe.time_usec();
-   dual_send(ds.cand, DPK_START, w, NP, NULL, 0);
-   send_ping();
+   dual_send(ds.cand, DPK_START, w, NP + 1, NULL, 0);
+   if (!ds.other)
+      send_ping();
 }
 
 static void setup_step(void) {
@@ -1071,6 +1365,26 @@ static void setup_step(void) {
       else if (now - ds.t_join > HELLO_US)
          give_up("Cable Link: the other console does not have this core, using the real time cable");
       return;
+   }
+
+   if (ds.state == DS_ROMS) {
+      if (!ds.roms_done) {
+         const u32 why = prepare_other();
+         ds.roms_done = true;
+         if (why) {
+            fallback(ds.slot_id[ds.my_slot ^ 1], why, true);
+            return;
+         }
+         if (!ds.is_host)
+            dual_send_peer(DPK_ROMOK, NULL, 0, NULL, 0);
+      }
+      if (!ds.is_host || ds.roms_ok) {
+         ds.state = DS_PING;
+         ds.t_state = fe.time_usec();
+         if (ds.is_host)
+            send_ping();
+         return;
+      }
    }
 
    if (ds.state == DS_PING) {
@@ -1109,7 +1423,7 @@ static void setup_step(void) {
    if (ds.state == DS_READY && (ds.is_host || ds.peer_ready))
       start_running();
 
-   if (ds.state >= DS_PING && ds.state < DS_RUN && now - ds.t_state > SETUP_US) {
+   if (ds.state >= DS_ROMS && ds.state < DS_RUN && now - ds.t_state > SETUP_US) {
       dual_send_peer(DPK_BYE, NULL, 0, NULL, 0);
       dual_stop("Cable Link: the other console did not answer");
    }
@@ -1122,7 +1436,7 @@ void init(const Frontend &f) {
 }
 
 void game_loaded(gambatte::GB *local, const void *rom, size_t size,
-                 unsigned flags, uint32_t cfg) {
+                 unsigned flags, uint32_t cfg, const char *path, const char *system) {
    game_unloaded();
    ds.local = local;
    ds.rom = (const u8*)malloc(size);
@@ -1132,6 +1446,12 @@ void game_loaded(gambatte::GB *local, const void *rom, size_t size,
    ds.flags = flags;
    ds.rom_crc = fnv(2166136261u ^ (u32)size, rom, size);
    ds.cfg = cfg;
+   ds.rom_header = size >= 0x150 ? cart_header((const u8*)rom) : 0;
+   ds.rom_path[0] = ds.system_path[0] = 0;
+   if (path && strlen(path) < sizeof(ds.rom_path))
+      strcpy(ds.rom_path, path);
+   if (system && strlen(system) < sizeof(ds.system_path) && strcmp(system, "."))
+      strcpy(ds.system_path, system);
    find_block_routine();
 }
 
@@ -1157,11 +1477,12 @@ void set_cfg(uint32_t cfg) {
    ds.peer_loaded = false;
 }
 
-void session_start(unsigned client_id) {
+void session_start(unsigned client_id, bool search_other) {
    dual_stop(NULL);
    rt_stop();
    session_reset();
    ds.is_host = (client_id == 0);
+   ds.search_other = search_other;
    ds.my_id = client_id;
    ds.my_slot = ds.is_host ? 0 : 1;
    if (!ds.local || !ds.rom) {
@@ -1197,7 +1518,7 @@ bool peer_connected(unsigned client_id) {
       give_up(MSG_DIFFER);
       return true;
    }
-   ds.cand_hello = (ds.early_hello & bit) != 0;
+   ds.cand_hello = ds.hello_id == (int)client_id && (ds.early_hello & bit) != 0;
    ds.early_hello &= ~bit;
    ds.t_join = fe.time_usec();
    return true;
@@ -1220,7 +1541,7 @@ void peer_disconnected(unsigned client_id) {
    if (ds.cand == (int)client_id || ds.slot_id[1] == (int)client_id ||
        (ds.rt && ds.rt_peer == client_id)) {
       dual_stop(ds.state == DS_RUN ? "Cable Link: the other console left" : NULL);
-      session_start(0);  /* The frontend is still hosting. */
+      session_start(0, ds.search_other);  /* The frontend is still hosting. */
    }
 }
 
@@ -1407,7 +1728,7 @@ int frame_begin(unsigned local_keys) {
 
 void run_frame(gambatte::video_pixel_t *video, int pitch,
                void (*audio)(const int16_t *samples, unsigned frames)) {
-   static gambatte::video_pixel_t work[NP][160 * 144];
+   static gambatte::video_pixel_t work[160 * 144];
    static gambatte::uint_least32_t sound[SLICE_SAMPLES + SOUND_SPARE];
    u32 target = 0;
    unsigned s;
@@ -1421,7 +1742,8 @@ void run_frame(gambatte::video_pixel_t *video, int pitch,
             long blit;
             ds.ir[s].base = ds.ir_clock[s];
             ds.ir[s].cc0 = gb->cycleCounter();
-            blit = gb->runFor(work[s], 160, sound,
+            const bool visible = s == ds.my_slot;
+            blit = gb->runFor(visible ? work : NULL, 160, visible ? sound : NULL,
                               sizeof(sound) / sizeof(sound[0]), n);
             ds.ir_clock[s] += 2 * (u64)n;
             if (s == ds.my_slot) {
@@ -1429,7 +1751,7 @@ void run_frame(gambatte::video_pixel_t *video, int pitch,
                if (blit >= 0) {
                   unsigned y;
                   for (y = 0; y < 144; y++)
-                     memcpy(&video[y * pitch], &work[s][y * 160],
+                     memcpy(&video[y * pitch], &work[y * 160],
                             160 * sizeof(gambatte::video_pixel_t));
                }
             }
@@ -1538,7 +1860,8 @@ bool net_receive(const void *buf, size_t len, uint16_t client_id) {
    /* The client says HELLO again after we went for the real time cable:
     * our answer was lost, it goes again. */
    if (type == DPK_HELLO && ds.is_host && ds.rt && client_id == ds.rt_peer) {
-      dual_send(client_id, DPK_GIVEUP, NULL, 0, NULL, 0);
+      u32 w[1] = { ds.rt_reason };
+      dual_send(client_id, DPK_GIVEUP, w, 1, NULL, 0);
       return true;
    }
    if (ds.state == DS_OFF)
@@ -1549,7 +1872,7 @@ bool net_receive(const void *buf, size_t len, uint16_t client_id) {
       from = NO_SLOT;
    /* Packets with a slot: only from the other console of this session. */
    if (from != NO_SLOT) {
-      if (ds.state < DS_PING || from >= NP || from == ds.my_slot ||
+      if (ds.state < DS_ROMS || from >= NP || from == ds.my_slot ||
           ds.slot_id[from] != (int)client_id)
          return true;
       ds.t_heard = now;
@@ -1558,11 +1881,10 @@ bool net_receive(const void *buf, size_t len, uint16_t client_id) {
    switch (type) {
    case DPK_HELLO:
       if (len >= 8 + 4 * 4) {
-         u32 w[4], i;
-         for (i = 0; i < 4; i++)
-            w[i] = be32(pkt[2 + i]);
+         RomId id;
+         const bool compatible = read_hello(id, pkt, len);
          if (ds.is_host && ds.state == DS_WAIT) {
-            if (!hello_matches(w)) {
+            if (!compatible) {
                /* Other games: the real time cable, once it joined (what we
                 * send to it before is dropped by the frontend). */
                if (ds.cand == (int)client_id)
@@ -1574,23 +1896,30 @@ bool net_receive(const void *buf, size_t len, uint16_t client_id) {
             /* Answer right away, even if the frontend has not told us
              * about it yet: otherwise it would think we lack this core. */
             send_hello(client_id);
+            if (ds.cand < 0 || ds.cand == (int)client_id) {
+               ds.remote = id;
+               ds.hello_id = client_id;
+            }
             if (ds.cand == (int)client_id)
                ds.cand_hello = true;
             else if (client_id < 64)
                ds.early_hello |= 1ull << client_id;
          }
          else if (!ds.is_host && ds.state == DS_HELLO && client_id == 0) {
-            if (!hello_matches(w))
+            if (!compatible)
                give_up(MSG_DIFFER);
-            else
+            else {
+               ds.remote = id;
+               ds.hello_id = client_id;
                ds.state = DS_WAIT;
+            }
          }
       }
       break;
 
    case DPK_START:
-      if (len >= 8 + NP * 4 && !ds.is_host && client_id == 0 &&
-          (ds.state == DS_WAIT || ds.state == DS_HELLO)) {
+      if (len >= 8 + (NP + 1) * 4 && !ds.is_host && client_id == 0 &&
+          ds.state == DS_WAIT && ds.hello_id == 0) {
          ds.slot_id[0] = (int)be32(pkt[2]);
          ds.slot_id[1] = (int)be32(pkt[3]);
          if (ds.slot_id[1] != (int)ds.my_id) {
@@ -1599,9 +1928,19 @@ bool net_receive(const void *buf, size_t len, uint16_t client_id) {
          }
          ds.my_slot = 1;
          ds.t_heard = now;
-         ds.state = DS_PING;
+         ds.other = (be32(pkt[4]) & DUAL_START_OTHER) != 0;
+         if (ds.other == same_rom(ds.remote)) {
+            fallback(0, DUAL_WHY_DIFFER, true);
+            break;
+         }
+         ds.state = ds.other ? DS_ROMS : DS_PING;
          ds.t_state = now;
       }
+      break;
+
+   case DPK_ROMOK:
+      if (ds.is_host && from == 1 && ds.state == DS_ROMS)
+         ds.roms_ok = true;
       break;
 
    case DPK_PING:
@@ -1630,7 +1969,7 @@ bool net_receive(const void *buf, size_t len, uint16_t client_id) {
          const u32 off = be32(pkt[2]);
          const u32 total = be32(pkt[3]);
          const u32 dlen = (u32)len - 16;
-         const u32 max = ds.local ? (u32)ds.local->stateSize() * 5 + 16 : 0;
+         const u32 max = ds.peer_loaded ? (u32)ds.peer->stateSize() * 5 + 16 : 0;
          if (!ds.peer_pack && total <= max)
             ds.peer_pack = (u8*)malloc(max);
          /* (Checked so that no sum can wrap around.) */
@@ -1687,18 +2026,10 @@ bool net_receive(const void *buf, size_t len, uint16_t client_id) {
       break;
 
    case DPK_GIVEUP:
-      if (!ds.is_host && client_id == 0) {
-         dual_stop(NULL);
-         ds.gave_up = true;
-         rt_start(0);
-         dual_msg(MSG_DIFFER);
-      }
-      else if (ds.is_host && ds.state == DS_WAIT) {
-         dual_stop(NULL);
-         ds.gave_up = true;
-         rt_start(client_id);
-         dual_msg(MSG_DIFFER);
-      }
+      if (ds.state < DS_TRANSFER &&
+          ((!ds.is_host && client_id == 0) ||
+           (ds.is_host && ds.cand == (int)client_id)))
+         fallback(client_id, len >= 12 ? be32(pkt[2]) : DUAL_WHY_DIFFER, false);
       break;
 
    case DPK_BYE:

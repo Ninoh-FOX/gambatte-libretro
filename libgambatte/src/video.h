@@ -49,6 +49,7 @@ class LCD
       void saveState(SaveState &state) const;
       void loadState(const SaveState &state, const unsigned char *oamram);
       void setDmgPaletteColor(unsigned palNum, unsigned colorNum, video_pixel_t rgb32);
+      void discardPixels() { ppu_.discardPixels(); }
       void setVideoBuffer(video_pixel_t *videoBuf, int pitch);
       void setDmgMode(bool mode) { ppu_.setDmgMode(mode); }
    

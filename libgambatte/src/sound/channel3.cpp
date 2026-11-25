@@ -142,7 +142,16 @@ void Channel3::updateWaveCounter(unsigned long const cc) {
 	}
 }
 
-void Channel3::update(uint_least32_t *buf, unsigned long const soBaseVol, unsigned long cycles) {
+void Channel3::update(uint_least32_t *buf, unsigned long soBaseVol, unsigned long cycles) {
+	run<true>(buf, soBaseVol, cycles);
+}
+
+void Channel3::advance(unsigned long soBaseVol, unsigned long cycles) {
+	run<false>(0, soBaseVol, cycles);
+}
+
+template<bool mix>
+void Channel3::run(uint_least32_t *buf, unsigned long const soBaseVol, unsigned long cycles) {
 	unsigned long const outBase = nr0_/* & 0x80*/ ? soBaseVol & soMask_ : 0;
 
 	if (outBase && rshift_ != 4) {
@@ -157,9 +166,11 @@ void Channel3::update(uint_least32_t *buf, unsigned long const soBaseVol, unsign
 			out *= outBase;
 
 			while (waveCounter_ <= nextMajorEvent) {
-				*buf += out - prevOut_;
+				if (mix)
+					*buf += out - prevOut_;
 				prevOut_ = out;
-				buf += waveCounter_ - cycleCounter_;
+				if (mix)
+					buf += waveCounter_ - cycleCounter_;
 				cycleCounter_ = waveCounter_;
 
 				lastReadTime_ = waveCounter_;
@@ -172,9 +183,11 @@ void Channel3::update(uint_least32_t *buf, unsigned long const soBaseVol, unsign
 			}
 
 			if (cycleCounter_ < nextMajorEvent) {
-				*buf += out - prevOut_;
+				if (mix)
+					*buf += out - prevOut_;
 				prevOut_ = out;
-				buf += nextMajorEvent - cycleCounter_;
+				if (mix)
+					buf += nextMajorEvent - cycleCounter_;
 				cycleCounter_ = nextMajorEvent;
 			}
 
@@ -185,7 +198,8 @@ void Channel3::update(uint_least32_t *buf, unsigned long const soBaseVol, unsign
 		}
 	} else {
 		unsigned long const out = outBase * (0 - 15ul);
-		*buf += out - prevOut_;
+		if (mix)
+			*buf += out - prevOut_;
 		prevOut_ = out;
 		cycleCounter_ += cycles;
 

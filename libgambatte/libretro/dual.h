@@ -41,12 +41,12 @@ void init(const Frontend &fe);
  * everything else that makes the machine different (see machine_cfg in
  * libretro.cpp). */
 void game_loaded(gambatte::GB *local, const void *rom, size_t size,
-                 unsigned flags, uint32_t cfg);
+                 unsigned flags, uint32_t cfg, const char *path, const char *system);
 void game_unloaded(void);
 void set_cfg(uint32_t cfg);
 
 /* Netplay session (Cable Link mode). */
-void session_start(unsigned client_id);
+void session_start(unsigned client_id, bool search_other);
 void session_stop(void);
 bool peer_connected(unsigned client_id);
 void peer_disconnected(unsigned client_id);

@@ -43,6 +43,10 @@ GB::~GB() {
 	delete p_;
 }
 
+void GB::discardOutput() {
+	p_->cpu.mem_.discardOutput();
+}
+
 long GB::runFor(gambatte::video_pixel_t *const videoBuf, const int pitch,
 			gambatte::uint_least32_t *const soundBuf, std::size_t soundBufSize, unsigned &samples) {
 	

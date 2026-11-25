@@ -38,6 +38,7 @@ public:
 	void saveState(SaveState &state);
 	void loadState(SaveState const &state);
 
+	void discardSamples() { discard_ = true; }
 	void generateSamples(unsigned long cycleCounter, bool doubleSpeed);
 	void resetCounter(unsigned long newCc, unsigned long oldCc, bool doubleSpeed);
    std::size_t fillBuffer();
@@ -86,6 +87,7 @@ private:
 	unsigned long soVol_;
 	uint_least32_t rsum_;
 	bool enabled_;
+	bool discard_;
 
 	void accumulateChannels(unsigned long cycles);
 };

@@ -30,10 +30,12 @@ namespace gambatte {
 
 class PPUFrameBuf {
 public:
-	PPUFrameBuf() : buf_(0), fbline_(nullfbline()), pitch_(0) {}
+	PPUFrameBuf() : buf_(0), fbline_(nullfbline()), pitch_(0), discard_(false) {}
 	video_pixel_t * fb() const { return buf_; }
 	video_pixel_t * fbline() const { return fbline_; }
 	std::ptrdiff_t pitch() const { return pitch_; }
+	bool discard() const { return discard_; }
+	void discardPixels() { discard_ = true; }
 	void setBuf(video_pixel_t *buf, std::ptrdiff_t pitch) { buf_ = buf; pitch_ = pitch; fbline_ = nullfbline(); }
 	void setFbline(unsigned ly) { fbline_ = buf_ ? buf_ + std::ptrdiff_t(ly) * pitch_ : nullfbline(); }
 
@@ -41,6 +43,7 @@ private:
 	video_pixel_t *buf_;
 	video_pixel_t *fbline_;
 	std::ptrdiff_t pitch_;
+	bool discard_;
 
 	/* Shared 160-pixel scratch used as a destination when no real
 	 * framebuf is attached. With DUAL_MODE compiled in, both PPU
@@ -178,6 +181,7 @@ public:
 	void reset(unsigned char const *oamram, unsigned char const *vram, bool cgb);
 	void resetCc(unsigned long oldCc, unsigned long newCc);
 	void saveState(SaveState &ss) const;
+	void discardPixels() { p_.framebuf.discardPixels(); }
 	void setFrameBuf(video_pixel_t *buf, std::ptrdiff_t pitch) { p_.framebuf.setBuf(buf, pitch); }
 	void setLcdc(unsigned lcdc, unsigned long cc);
 	void setScx(unsigned scx) { p_.scx = scx; }

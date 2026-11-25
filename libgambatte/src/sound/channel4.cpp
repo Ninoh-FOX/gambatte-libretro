@@ -216,7 +216,16 @@ void Channel4::loadState(SaveState const &state) {
 	master_ = state.spu.ch4.master;
 }
 
-void Channel4::update(uint_least32_t *buf, unsigned long const soBaseVol, unsigned long cycles) {
+void Channel4::update(uint_least32_t *buf, unsigned long soBaseVol, unsigned long cycles) {
+	run<true>(buf, soBaseVol, cycles);
+}
+
+void Channel4::advance(unsigned long soBaseVol, unsigned long cycles) {
+	run<false>(0, soBaseVol, cycles);
+}
+
+template<bool mix>
+void Channel4::run(uint_least32_t *buf, unsigned long const soBaseVol, unsigned long cycles) {
 	unsigned long const outBase = envelopeUnit_.dacIsOn() ? soBaseVol & soMask_ : 0;
 	unsigned long const outLow = outBase * (0 - 15ul);
 	unsigned long const endCycles = cycleCounter_ + cycles;
@@ -227,9 +236,11 @@ void Channel4::update(uint_least32_t *buf, unsigned long const soBaseVol, unsign
 		unsigned long out = lfsr_.isHighState() ? outHigh : outLow;
 
 		while (lfsr_.counter() <= nextMajorEvent) {
-			*buf += out - prevOut_;
+			if (mix)
+				*buf += out - prevOut_;
 			prevOut_ = out;
-			buf += lfsr_.counter() - cycleCounter_;
+			if (mix)
+				buf += lfsr_.counter() - cycleCounter_;
 			cycleCounter_ = lfsr_.counter();
 
 			lfsr_.event();
@@ -237,9 +248,11 @@ void Channel4::update(uint_least32_t *buf, unsigned long const soBaseVol, unsign
 		}
 
 		if (cycleCounter_ < nextMajorEvent) {
-			*buf += out - prevOut_;
+			if (mix)
+				*buf += out - prevOut_;
 			prevOut_ = out;
-			buf += nextMajorEvent - cycleCounter_;
+			if (mix)
+				buf += nextMajorEvent - cycleCounter_;
 			cycleCounter_ = nextMajorEvent;
 		}
 

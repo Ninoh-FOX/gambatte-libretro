@@ -1735,7 +1735,10 @@ static void netpacket_start(uint16_t client_id,
    if (gb_serialMode == SERIAL_CABLE)
    {
       dual::set_cfg(machine_cfg());
-      dual::session_start(client_id);
+      struct retro_variable var = { "gambatte_gb_link_other_games", NULL };
+      const bool search = !environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) ||
+                          !var.value || strcmp(var.value, "realtime");
+      dual::session_start(client_id, search);
    }
 }
 
@@ -2969,7 +2972,9 @@ bool retro_load_game(const struct retro_game_info *info)
       return false;
 #ifdef HAVE_NETWORK
    load_flags = flags;
-   dual::game_loaded(&gb, info->data, info->size, flags, machine_cfg());
+   const char *system = NULL;
+   environ_cb(RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY, &system);
+   dual::game_loaded(&gb, info->data, info->size, flags, machine_cfg(), info->path, system);
 #endif
 #ifdef DUAL_MODE
    if (gb2.load(info->data, info->size, flags) != 0)

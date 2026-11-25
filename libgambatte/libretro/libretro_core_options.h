@@ -853,7 +853,7 @@ struct retro_core_option_v2_definition option_defs_us[] = {
       "gambatte_gb_link_mode",
       "Game Link Mode",
       "Link Mode",
-      "When enabling networked Game Link functionality, specify whether current instance should run as a server or client. 'Cable Link (netplay)' links two consoles through RetroArch's netplay (no address to set): with the same game on both, each console runs both Game Boys and only the buttons are sent.",
+      "When enabling networked Game Link functionality, specify whether current instance should run as a server or client. 'Cable Link (netplay)' links two consoles through RetroArch's netplay (no address to set): when both have the two games, each console runs both Game Boys and only the buttons are sent.",
       NULL,
       "gb_link",
       {
@@ -864,6 +864,20 @@ struct retro_core_option_v2_definition option_defs_us[] = {
          { NULL, NULL },
       },
       "Cable Link"
+   },
+   {
+      "gambatte_gb_link_other_games",
+      "Cable Link with Different Games",
+      NULL,
+      "Look for the other player's cartridge locally to run the Dual Cable Link. If either cartridge cannot be found, use the real time cable.",
+      NULL,
+      "gb_link",
+      {
+         { "auto",     "Look for the other game" },
+         { "realtime", "Real time cable" },
+         { NULL, NULL },
+      },
+      "auto"
    },
    {
       "gambatte_gb_link_network_port",
