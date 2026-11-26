@@ -258,10 +258,11 @@ class ResamplerOption : public DescOption {
 public:
 	ResamplerOption()
 	: DescOption("resampler", 0, 1)
-	/* 2 = Kaiser50. The core gives 32768 Hz and this goes up to 48000: on
-	   that path 1 (RectSinc, 5 taps) leaves images about 10 dB under the
-	   sound (11-21 kHz, heard as harsh, badly equalized audio). */
-	, resamplerNo_(2)
+	/* 0 = Fast (linear). The core already band-limits its output (blipper
+	   sinc to 32768 Hz), so this only goes up to 48000; chosen by ear on
+	   the Plus over 1 (RectSinc) and 2 (Kaiser50), and it is the cheapest.
+	   --resampler N still selects the others. */
+	, resamplerNo_(0)
 	{
 	}
 
